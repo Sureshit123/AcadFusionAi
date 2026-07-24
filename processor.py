@@ -40,7 +40,13 @@ def generate_excel_report(results):
     Generates a multi-sheet Excel file with Overall Summary and Subject-wise Analysis.
     Following ISE Department college format.
     """
-    valid_results = [r for r in results if r.get('status') in ['Pass', 'Fail']]
+    if not isinstance(results, list):
+        results = []
+
+    valid_results = [
+        r for r in results 
+        if isinstance(r, dict) and r.get('status') in ['Pass', 'Fail']
+    ]
     
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -51,14 +57,15 @@ def generate_excel_report(results):
         }
         
         for r in results:
-            status = r.get('status')
+            if not isinstance(r, dict): continue
+            status = str(r.get('status', ''))
             if status == "Pass":
-                total = r.get('total_marks', 0)
-                max_m = r.get('max_marks', 1)
-                per = (total / max_m) * 100
+                total = r.get('total_marks', 0) or 0
+                max_m = r.get('max_marks', 1) or 1
+                per = (total / max_m) * 100 if max_m > 0 else 0
                 if per >= 70: summary_data['FCD'] += 1
                 elif per >= 60: summary_data['FC'] += 1
-                elif per >= 35: summary_data['SC'] += 1
+                elif per >= 40: summary_data['SC'] += 1
                 else: summary_data['Fail'] += 1
             elif status == "Fail":
                 summary_data['Fail'] += 1
@@ -105,19 +112,25 @@ def generate_excel_report(results):
         # --- SHEET 2: SUBJECT-WISE RESULT ANALYSIS ---
         all_subjects_meta = {} # code -> name
         for r in valid_results:
-            for sub_code, sub_data in r.get('subjects', {}).items():
-                if sub_code not in all_subjects_meta:
-                    all_subjects_meta[sub_code] = sub_data.get('name', 'N/A')
+            subjects = r.get('subjects') or {}
+            if isinstance(subjects, dict):
+                for sub_code, sub_data in subjects.items():
+                    if sub_code not in all_subjects_meta:
+                        if isinstance(sub_data, dict):
+                            all_subjects_meta[sub_code] = sub_data.get('name', 'N/A')
+                        else:
+                            all_subjects_meta[sub_code] = 'N/A'
 
         if valid_results:
             sub_analysis = []
             for sub_code, sub_name in all_subjects_meta.items():
                 stats = {'fcd': 0, 'fc': 0, 'sc': 0, 'fail': 0, 'absent': 0, 'appeared': 0}
                 for r in valid_results:
-                    sub_data = r.get('subjects', {}).get(sub_code)
-                    if sub_data:
-                        res = sub_data.get('result', '').upper()
-                        total = sub_data.get('total', 0)
+                    subjects = r.get('subjects') or {}
+                    sub_data = subjects.get(sub_code) if isinstance(subjects, dict) else None
+                    if isinstance(sub_data, dict):
+                        res = str(sub_data.get('result', '')).upper()
+                        total = sub_data.get('total', 0) or 0
                         if res in ['A', 'ABSENT']:
                             stats['absent'] += 1
                         else:
@@ -125,7 +138,7 @@ def generate_excel_report(results):
                             if res in ['P', 'PASS']:
                                 if total >= 70: stats['fcd'] += 1
                                 elif total >= 60: stats['fc'] += 1
-                                elif total >= 35: stats['sc'] += 1
+                                elif total >= 40: stats['sc'] += 1
                                 else: stats['fail'] += 1
                             else:
                                 stats['fail'] += 1
@@ -138,7 +151,7 @@ def generate_excel_report(results):
                     'Sub code': sub_code,
                     'FCD (70-100%)': stats['fcd'],
                     'FC (60-69%)': stats['fc'],
-                    'SC (35-59%)': stats['sc'],
+                    'SC (40-59%)': stats['sc'],
                     'Fail': stats['fail'],
                     'Absent': stats['absent'],
                     'Total students Appeared': stats['appeared'],
@@ -185,54 +198,52 @@ def generate_excel_report(results):
                 ws_sub.column_dimensions[column_letter].width = min(max_length + 2, 40)
 
             # --- ADD CHART TO SHEET 1 (Referencing Sheet 2 data) ---
-            chart = BarChart()
-            chart.type = "col"
-            chart.style = 10
-            chart.title = "Subject wise %"
-            chart.y_axis.title = 'PERCENTAGE'
-            chart.x_axis.title = 'SUBJECTS'
-            chart.height = 12
-            chart.width = 25
-            
-            # Rotation for X-axis labels (45 degrees)
-            chart.x_axis.labelRotation = 4500 
+            if ws_sub.max_row > 4:
+                chart = BarChart()
+                chart.type = "col"
+                chart.style = 10
+                chart.title = "Subject wise %"
+                chart.y_axis.title = 'PERCENTAGE'
+                chart.x_axis.title = 'SUBJECTS'
+                chart.height = 12
+                chart.width = 25
+                chart.x_axis.labelRotation = 4500 
 
-            # Show percentage values on top of bars
-            chart.dataLabels = DataLabelList()
-            chart.dataLabels.showVal = True
-            
-            # Data from Sheet 2
-            data = Reference(ws_sub, min_col=10, min_row=4, max_row=ws_sub.max_row)
-            cats = Reference(ws_sub, min_col=1, min_row=5, max_row=ws_sub.max_row)
-            
-            chart.add_data(data, titles_from_data=True)
-            chart.set_categories(cats)
-            chart.legend = None
-            
-            # Set bar color (Series 1)
-            if chart.series:
-                chart.series[0].graphical_properties = GraphicalProperties(solidFill=ColorChoice(srgbClr="4F81BD"))
+                chart.dataLabels = DataLabelList()
+                chart.dataLabels.showVal = True
+                
+                data = Reference(ws_sub, min_col=10, min_row=4, max_row=ws_sub.max_row)
+                cats = Reference(ws_sub, min_col=1, min_row=5, max_row=ws_sub.max_row)
+                
+                chart.add_data(data, titles_from_data=True)
+                chart.set_categories(cats)
+                chart.legend = None
+                
+                if chart.series:
+                    chart.series[0].graphical_properties = GraphicalProperties(solidFill=ColorChoice(srgbClr="4F81BD"))
 
-            # Position on Sheet 1
-            ws_sum.add_chart(chart, "A12")
+                ws_sum.add_chart(chart, "A12")
 
         # --- SHEET 3: All Students ---
         all_subject_codes = sorted(list(all_subjects_meta.keys()))
         df_all = []
         for i, r in enumerate(results):
-            res_status = r.get('status')
-            row = {'SL.No': i + 1, 'USN': r.get('usn'), 'NAME': r.get('name') if r.get('name') else res_status}
+            if not isinstance(r, dict): continue
+            res_status = str(r.get('status', 'N/A'))
+            student_name = r.get('name') if r.get('name') else res_status
+            row = {'SL.No': i + 1, 'USN': r.get('usn', 'N/A'), 'NAME': student_name}
             backlog_count = 0
+            subjects = r.get('subjects') or {}
             for sub_code in all_subject_codes:
                 if res_status in ['Pass', 'Fail']:
-                    sub_data = r.get('subjects', {}).get(sub_code)
-                    if sub_data:
+                    sub_data = subjects.get(sub_code) if isinstance(subjects, dict) else None
+                    if isinstance(sub_data, dict):
                         row[f'{sub_code}_INT'] = sub_data.get('internal', 0)
                         row[f'{sub_code}_EXT'] = sub_data.get('external', 0)
                         row[f'{sub_code}_TOT'] = sub_data.get('total', 0)
                         res_flag = str(sub_data.get('result', '')).upper()
                         row[f'{sub_code}_PT'] = res_flag
-                        if res_flag in ['F', 'A', 'ABSENT']: backlog_count += 1
+                        if res_flag in ['F', 'A', 'ABSENT', 'FAIL']: backlog_count += 1
                     else:
                         for k in ['INT', 'EXT', 'TOT', 'PT']: row[f'{sub_code}_{k}'] = '-'
                 else:
@@ -246,7 +257,6 @@ def generate_excel_report(results):
         ws_all = writer.sheets['All Students']
         
         # Advanced Merged Headers for Sheet 3
-        # Static columns vertical merge
         header_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
         yellow_row_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
         
@@ -273,7 +283,6 @@ def generate_excel_report(results):
 
         # Apply Styling & Backlog Highlighting
         for row_idx, row in enumerate(ws_all.iter_rows(min_row=1, max_row=ws_all.max_row, min_col=1, max_col=ws_all.max_column), 1):
-            # Header Styling
             if row_idx <= 2:
                 for cell in row:
                     cell.font = Font(bold=True, size=9)
@@ -281,8 +290,7 @@ def generate_excel_report(results):
                     cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
                     cell.border = thin_border
             else:
-                # Backlog Highlighting
-                bl_cell = row[-1] # No.of B/L is the last column
+                bl_cell = row[-1]
                 has_backlog = False
                 try:
                     if isinstance(bl_cell.value, int) and bl_cell.value > 0: has_backlog = True
@@ -299,11 +307,29 @@ def generate_excel_report(results):
         ws_all.column_dimensions['C'].width = 30 # NAME
 
         # --- SHEET 4: Top 5 Toppers ---
-        toppers = sorted([r for r in valid_results if r.get('status') == 'Pass'], key=lambda x: x.get('total_marks', 0), reverse=True)[:5]
+        toppers = sorted(
+            [r for r in valid_results if r.get('status') == 'Pass'], 
+            key=lambda x: x.get('total_marks', 0) or 0, 
+            reverse=True
+        )[:5]
+
         df_toppers = pd.DataFrame([{
-            'Rank': i+1, 'USN': t['usn'], 'Name': t['name'], 'Total': t['total_marks']
+            'Rank': i+1, 
+            'USN': t.get('usn', 'N/A'), 
+            'Name': t.get('name', 'N/A'), 
+            'Total': t.get('total_marks', 0)
         } for i, t in enumerate(toppers)])
         df_toppers.to_excel(writer, sheet_name='Top 5 Toppers', index=False)
+
+        # Ensure all sheets are visible and active sheet is valid BEFORE ExcelWriter closes & saves
+        try:
+            wb = writer.book
+            if wb and wb.worksheets:
+                for ws in wb.worksheets:
+                    ws.sheet_state = 'visible'
+                wb.active = 0
+        except Exception:
+            pass
 
     output.seek(0)
     return output

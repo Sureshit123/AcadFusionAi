@@ -24,16 +24,16 @@ class Database:
             self.users = None
 
     def get_user_by_email(self, email):
-        if self.users is None: return None
-        return self.users.find_one({'email': email})
+        if self.users is None or not email: return None
+        return self.users.find_one({'email': email.strip().lower()})
 
     def create_user(self, name, email, password):
         if self.users is None: return False
         hashed_pw = generate_password_hash(password)
         try:
             self.users.insert_one({
-                'name': name,
-                'email': email,
+                'name': name.strip(),
+                'email': email.strip().lower(),
                 'password_hash': hashed_pw
             })
             return True

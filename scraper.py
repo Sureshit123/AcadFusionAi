@@ -1,24 +1,37 @@
 import os
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 import base64
 import logging
 import random
 import re
 import urllib3
+from datetime import datetime
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Base URLs
+# Base URLs - VTU MJ26 CBCS exam result portal
 VTU_BASE = "https://results.vtu.ac.in/MJ26cbcs"
 VTU_INDEX = f"{VTU_BASE}/index.php"
 VTU_RESULT = f"{VTU_BASE}/resultpage.php"
+VTU_SITE_ROOT = "https://results.vtu.ac.in"
 
 # Mock Mode Configuration
 VTU_MOCK_MODE = os.environ.get('VTU_MOCK_MODE', 'false').lower() == 'true'
+
+def _compute_js_token():
+    """
+    Replicates the JavaScript onsubmit token:
+      js_token = btoa('student_access_' + new Date().getFullYear())
+    """
+    year = datetime.now().year
+    raw = f"student_access_{year}"
+    return base64.b64encode(raw.encode()).decode()
 
 def get_headers():
     return {
@@ -70,45 +83,81 @@ def initialize_scrape(usn, retries=3, mock=None, session=None):
         session = requests.Session()
         session.verify = False
         session.headers.update(get_headers())
+
+        # Configure retries with exponential backoff for transient errors (including SSL/EOF)
+        retry_strategy = Retry(
+            total=5,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"],
+            backoff_factor=1,
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
     
     last_err = None
     for attempt in range(retries):
         try:
-            res = session.get(VTU_INDEX, timeout=15)
+            # Timeout made configurable via environment var, default 30s
+            default_timeout = int(os.environ.get('VTU_REQUEST_TIMEOUT', '30'))
+            res = session.get(VTU_INDEX, timeout=default_timeout)
             res.raise_for_status()
-            soup = BeautifulSoup(res.text, 'html.parser')
+
+            # Decode with utf-8-sig to strip the BOM character (\ufeff) VTU sends
+            html_content = res.content.decode('utf-8-sig', errors='replace')
+            soup = BeautifulSoup(html_content, 'html.parser')
             
-            # 1. Find Hidden Token
-            token_val = ""
-            token_name = "Token" # Fallback guess
+            # 1. Find ALL Hidden Tokens from the form
+            token_dict = {}
             hidden_inputs = soup.find_all('input', type='hidden')
             for inp in hidden_inputs:
-                if inp.get('name') and inp.get('value'):
-                    if 'token' in inp.get('name', '').lower() or len(inp.get('value', '')) > 10:
-                        token_name = inp.get('name')
-                        token_val = inp.get('value')
-                        break
+                if inp.get('name'):
+                    token_dict[inp.get('name')] = inp.get('value', '')
 
-            # 2. Extract Captcha Image URL
+            # 2. Inject the JS-generated token (set via onsubmit in the browser):
+            #    js_token = btoa('student_access_' + new Date().getFullYear())
+            token_dict['js_token'] = _compute_js_token()
+            logger.info(f"js_token computed: {token_dict['js_token']}")
+            logger.info(f"Token dict keys: {list(token_dict.keys())}")
+
+            # 3. Extract Captcha Image URL
+            #    The captcha src starts with /captcha/... (absolute from site root)
             captcha_img = soup.find('img', src=lambda s: s and 'captcha' in s.lower())
             if not captcha_img:
                 return session, None, None, "No captcha image found on VTU site. Site structure may have changed."
-                
+
             from urllib.parse import urljoin
-            captcha_url = urljoin(VTU_INDEX, captcha_img['src'])
+            raw_captcha_src = captcha_img['src']
+            # If src starts with '/', resolve relative to site root, not subdirectory
+            if raw_captcha_src.startswith('/'):
+                captcha_url = VTU_SITE_ROOT + raw_captcha_src
+            else:
+                captcha_url = urljoin(VTU_INDEX, raw_captcha_src)
+            logger.info(f"Captcha URL: {captcha_url}")
             
-            # 3. Download Captcha Image (Increased timeout due to VTU server load)
-            captcha_res = session.get(captcha_url, timeout=15)
+            # 4. Download Captcha Image (Increased timeout due to VTU server load)
+            captcha_res = session.get(captcha_url, timeout=default_timeout)
             captcha_res.raise_for_status()
             
             b64_captcha = base64.b64encode(captcha_res.content).decode('utf-8')
             
             # Return the required state for Part 2
-            return session, b64_captcha, {"name": token_name, "value": token_val}, None
+            return session, b64_captcha, token_dict, None
             
+        except requests.exceptions.SSLError as e:
+            last_err = str(e)
+            logger.warning(f"SSL error on attempt {attempt+1} for {usn}: {e}")
+            time.sleep(2 ** attempt)
+            continue
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            last_err = str(e)
+            logger.warning(f"Timeout/Connection error on attempt {attempt+1} for {usn}: {e}")
+            time.sleep(2 ** attempt)
+            continue
         except Exception as e:
             last_err = str(e)
-            logger.warning(f"Timeout/Error on attempt {attempt+1} for {usn}: {e}")
+            logger.warning(f"Error on attempt {attempt+1} for {usn}: {e}")
             time.sleep(2) # Wait before retry
             
     logger.error(f"Failed to initialize scrape for {usn} after {retries} attempts: {last_err}")
@@ -123,40 +172,77 @@ def complete_scrape(usn, session, token_dict, captcha_text, mock=None):
     if is_mock:
         return get_mock_result(usn)
 
+    session.headers.update({
+        'Referer': VTU_INDEX,
+        'Origin': VTU_BASE
+    })
+
     payload = {
         'lns': usn,
         'captchacode': captcha_text
     }
     
-    # Add hidden token if found
-    if token_dict and token_dict.get('name'):
-         payload[token_dict['name']] = token_dict['value']
+    # Add hidden token(s) if found
+    if isinstance(token_dict, dict):
+        payload.update(token_dict)
+    elif isinstance(token_dict, tuple) or hasattr(token_dict, 'get'):
+        if token_dict.get('name'):
+            payload[token_dict['name']] = token_dict['value']
     
-    try:
-        # Some VTU sites use index.php for post, some use resultpage.php. We will try resultpage.
-        # But let's check what action URL the form has
-        # Usually it's resultpage.php
-        res = session.post(VTU_RESULT, data=payload, timeout=15)
-        
-        # If captcha is wrong, VTU usually returns to index with an alert
-        if "Invalid captcha" in res.text or "Invalid Captch" in res.text:
-             return {"usn": usn, "status": "Invalid Captcha"}
-             
-        if "Redirecting" in res.text:
-             return {"usn": usn, "status": "Busy/Redirect"}
-             
-        if "Invalid USN" in res.text or "not available" in res.text.lower():
-             return {"usn": usn, "status": "Invalid/No Res"}
-             
-        # Debug dump
-        with open('latest_result.html', 'w', encoding='utf-8') as f:
-            f.write(res.text)
+    # Always ensure js_token is present (computed same way as browser onsubmit)
+    payload['js_token'] = _compute_js_token()
+    
+    logger.info(f"Submitting for {usn} with payload keys: {list(payload.keys())}")
+    
+    # Use same default timeout as initialize
+    default_timeout = int(os.environ.get('VTU_REQUEST_TIMEOUT', '30'))
+    last_err = None
+    for attempt in range(3):
+        try:
+            res = session.post(VTU_RESULT, data=payload, timeout=default_timeout)
             
-        return parse_vtu_html(usn, res.text)
-        
-    except Exception as e:
-        logger.error(f"Failed to complete scrape for {usn}: {e}")
-        return {"usn": usn, "status": "Network/Parse Error"}
+            # Decode with utf-8-sig to handle VTU BOM character
+            res_text = res.content.decode('utf-8-sig', errors='replace')
+
+            # Debug dump (always write for debugging)
+            try:
+                with open('latest_result.html', 'w', encoding='utf-8') as f:
+                    f.write(res_text)
+            except Exception:
+                pass
+
+            # If captcha is wrong, VTU usually returns to index with an alert
+            if "Invalid captcha" in res_text or "Invalid Captch" in res_text:
+                 return {"usn": usn, "status": "Invalid Captcha"}
+                 
+            if "Redirecting" in res_text:
+                 return {"usn": usn, "status": "Busy/Redirect"}
+                 
+            if "Direct access" in res_text or "Direct API" in res_text:
+                 logger.warning(f"Direct access blocked for {usn}. Response snippet: {res_text[:200]}")
+                 return {"usn": usn, "status": "Direct Access Blocked"}
+                 
+            if "Invalid USN" in res_text or "not available" in res_text.lower():
+                 return {"usn": usn, "status": "Invalid/No Res"}
+
+            return parse_vtu_html(usn, res_text)
+
+        except requests.exceptions.SSLError as e:
+            last_err = str(e)
+            logger.warning(f"SSL error on post attempt {attempt+1} for {usn}: {e}")
+            time.sleep(2 ** attempt)
+            continue
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            last_err = str(e)
+            logger.warning(f"Timeout/Connection error on post attempt {attempt+1} for {usn}: {e}")
+            time.sleep(2 ** attempt)
+            continue
+        except Exception as e:
+            last_err = str(e)
+            logger.error(f"Failed to complete scrape for {usn}: {e}")
+            break
+
+    return {"usn": usn, "status": "Network/Parse Error", "error": last_err}
 
 
 def parse_vtu_html(usn, html_content):
@@ -171,7 +257,7 @@ def parse_vtu_html(usn, html_content):
         "total_marks": 0,
         "max_marks": 0,
         "sgpa": 0.0,
-        "status": "Pass",
+        "status": "No Res",
         "subjects": {}
     }
     
@@ -269,8 +355,6 @@ def parse_vtu_html(usn, html_content):
         # Calculate derived metrics
         if result["subjects"]:
             result["total_marks"] = sum(s["total"] for s in result["subjects"].values())
-            # For 2022+ schemes, some subjects have 100 max, some 50. Approximating default max marks realistically. 
-            # VTU typically uses 100 per subject.
             result["max_marks"] = len(result["subjects"]) * 100
             
             if any(s["result"] in ['F', 'A', 'FAIL', 'ABSENT'] for s in result["subjects"].values()):
@@ -282,6 +366,8 @@ def parse_vtu_html(usn, html_content):
                 result["percentage"] = round((result["total_marks"] / result["max_marks"]) * 100, 2)
             else:
                 result["percentage"] = 0
+        else:
+            result["status"] = "No Res"
                 
     except Exception as e:
         logger.error(f"Error parsing HTML for {usn}: {e}")

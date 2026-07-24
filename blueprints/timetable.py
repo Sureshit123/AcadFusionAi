@@ -372,6 +372,13 @@ def export_cycle():
             df = pd.DataFrame(df_data, columns=cols)
             df.to_excel(writer, index=False, sheet_name=f"Semester_{sem}")
             
+            try:
+                if writer.book and writer.book.worksheets:
+                    for ws in writer.book.worksheets:
+                        ws.sheet_state = 'visible'
+                    writer.book.active = 0
+            except Exception: pass
+
     output.seek(0)
     return send_file(output, as_attachment=True, download_name=f"Department_Timetable.xlsx")
 @timetable_bp.route('/api/download_historical_timetable/<id>')
@@ -414,7 +421,14 @@ def download_historical_timetable(id):
                         df_data.append(row)
                 df = pd.DataFrame(df_data, columns=cols)
                 df.to_excel(writer, index=False, sheet_name=f"Semester_{sem}")
-                
+            
+            try:
+                if writer.book and writer.book.worksheets:
+                    for ws in writer.book.worksheets:
+                        ws.sheet_state = 'visible'
+                    writer.book.active = 0
+            except Exception: pass
+
         output.seek(0)
         return send_file(output, as_attachment=True, download_name=f"AcadFusion_{cycle_type.capitalize()}_Timetable.xlsx")
         

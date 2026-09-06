@@ -46,8 +46,8 @@ AcadFusion AI is a comprehensive academic management suite designed to streamlin
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/Sureshit123/AcadFusion-Ai.git
-   cd AcadFusion-Ai
+   git clone https://github.com/Sureshit123/AcadFusionAi.git
+   cd AcadFusionAi
    ```
 
 2. **Setup a Virtual Environment**

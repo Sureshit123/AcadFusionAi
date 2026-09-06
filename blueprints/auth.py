@@ -1,8 +1,42 @@
 import os
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+import functools
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
 from models.database import db_instance
 
 auth_bp = Blueprint('auth', __name__)
+
+def is_admin():
+    """Helper function to check if current logged in user has admin privileges."""
+    if not session.get('user_id'):
+        return False
+    if session.get('user_id') == 'admin_super_user':
+        return True
+    return session.get('user_role') == 'admin'
+
+def login_required(f):
+    @functools.wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'Unauthorized: Login required'}), 401
+            return redirect(url_for('auth.login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    @functools.wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'Unauthorized: Login required'}), 401
+            return redirect(url_for('auth.login'))
+        if not is_admin():
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'Forbidden: Admin access required'}), 403
+            flash("Access denied. Admin privileges required.", "error")
+            return redirect(url_for('main.hub'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 @auth_bp.route('/signup', methods=['GET', 'POST'])
 def signup():
@@ -49,6 +83,7 @@ def login():
             if email == env_admin_user and password == env_admin_pass:
                 session['user_id'] = 'admin_super_user'
                 session['user_name'] = 'Super Admin'
+                session['user_role'] = 'admin'
                 session['logged_in'] = True
                 return redirect(url_for('main.hub'))
 
@@ -57,10 +92,12 @@ def login():
         if user:
             session['user_id'] = str(user['_id'])
             session['user_name'] = user['name']
+            session['user_email'] = user.get('email', '')
+            session['user_role'] = user.get('role', 'user')
             session['logged_in'] = True
             return redirect(url_for('main.hub'))
         else:
-            flash("Invalid email or password.", "error")
+            flash("Invalid email/password or account is suspended.", "error")
     
     return render_template('auth/login.html')
 
@@ -68,4 +105,5 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for('auth.login'))
+
 

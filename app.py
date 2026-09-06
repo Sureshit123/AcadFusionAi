@@ -7,7 +7,10 @@ from blueprints.auth import auth_bp
 from blueprints.main import main_bp
 from blueprints.analyzer import analyzer_bp
 from blueprints.timetable import timetable_bp
-from blueprints.optimizer import optimizer_bp
+from blueprints.settings import settings_bp
+from blueprints.feedback import feedback_bp
+from blueprints.admin import admin_bp
+from models.database import db_instance
 
 load_dotenv()
 
@@ -20,15 +23,19 @@ def create_app():
     app.register_blueprint(main_bp)
     app.register_blueprint(analyzer_bp)
     app.register_blueprint(timetable_bp)
-    app.register_blueprint(optimizer_bp)
+    app.register_blueprint(settings_bp)
+    app.register_blueprint(feedback_bp)
+    app.register_blueprint(admin_bp)
+
+    # Ensure creator admin user permissions are initialized
+    try:
+        db_instance.ensure_admin_user()
+    except Exception as e:
+        print(f"Admin init warning: {e}")
 
     return app
 
 app = create_app()
 
 if __name__ == '__main__':
-    # Increase recursion depth for complex timetable backtracking if needed
-    import sys
-    sys.setrecursionlimit(2000)
-    
     app.run(debug=True, port=5000, host="0.0.0.0")

@@ -1088,3 +1088,296 @@ body.light-mode .history-hub-item {
     color: #ef4444;
     border: 1px solid rgba(239, 68, 68, 0.3);
 }
+
+/* ==========================================================================
+   Responsive Desktop Result Analyser Layout Upgrades
+   ========================================================================== */
+
+.analyzer-dashboard-container {
+    width: 90%;
+    max-width: 1500px;
+    padding: 1.5rem 2rem;
+    margin: 1rem auto;
+}
+
+@media (min-width: 1024px) {
+    .analyzer-dashboard-container {
+        width: 88%;
+        max-width: 1500px;
+        padding: 1.25rem 2rem;
+    }
+    
+    .report-config-row-top {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 0.6rem;
+    }
+    
+    .report-config-row-mid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 0.6rem;
+    }
+
+    .sequence-mode-form {
+        display: flex;
+        flex-direction: row;
+        align-items: flex-end;
+        gap: 1rem;
+    }
+
+    .sequence-mode-form .input-group-usn {
+        flex: 2;
+    }
+
+    .sequence-mode-form .input-group-count {
+        flex: 1;
+    }
+
+    .sequence-mode-form .btn-submit-sequence {
+        flex: 1;
+        height: 38px;
+        margin-bottom: 0;
+    }
+
+    .bulk-mode-form {
+        display: flex;
+        flex-direction: row;
+        align-items: flex-end;
+        gap: 1rem;
+    }
+    
+    .bulk-mode-form .input-group-file {
+        flex: 3;
+    }
+    
+    .bulk-mode-form .btn-submit-bulk {
+        flex: 1;
+        height: 38px;
+        margin-bottom: 0;
+    }
+}
+
+@media (max-width: 1023px) and (min-width: 641px) {
+    .analyzer-dashboard-container {
+        width: 92%;
+        padding: 1.25rem;
+    }
+    
+    .report-config-row-top,
+    .report-config-row-mid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+    }
+    
+    .sequence-mode-form,
+    .bulk-mode-form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+}
+
+@media (max-width: 640px) {
+    .analyzer-dashboard-container {
+        width: 96%;
+        padding: 1rem;
+    }
+    
+    .report-config-row-top,
+    .report-config-row-mid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+
+    .sequence-mode-form,
+    .bulk-mode-form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+}
+
+/* ==========================================================================
+   Admin Dashboard Styling
+   ========================================================================== */
+
+.admin-container {
+    width: 92%;
+    max-width: 1550px;
+    margin: 1.5rem auto;
+    padding: 2rem;
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.admin-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 2rem;
+}
+
+.admin-stat-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    padding: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: all 0.3s ease;
+}
+
+.admin-stat-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-primary);
+    box-shadow: 0 8px 20px var(--accent-glow);
+}
+
+.admin-stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: rgba(124, 58, 237, 0.15);
+    color: var(--accent-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+
+.admin-stat-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-stat-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.admin-stat-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.admin-nav-tabs {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 0.5rem;
+}
+
+.admin-tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 0.6rem 1.25rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.admin-tab-btn.active, .admin-tab-btn:hover {
+    background: rgba(124, 58, 237, 0.15);
+    color: var(--accent-primary);
+}
+
+.admin-table-container {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    overflow-x: auto;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+.admin-table th {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    padding: 0.85rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.admin-table td {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.admin-table tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    border-radius: 99px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.status-badge.active {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-badge.suspended {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.status-badge.admin {
+    background: rgba(124, 58, 237, 0.15);
+    color: #a855f7;
+    border: 1px solid rgba(124, 58, 237, 0.3);
+}
+
+.status-badge.user {
+    background: rgba(6, 182, 212, 0.15);
+    color: #06b6d4;
+    border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.admin-action-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-right: 0.3rem;
+}
+
+.admin-action-btn:hover {
+    background: var(--accent-primary);
+    color: white;
+}

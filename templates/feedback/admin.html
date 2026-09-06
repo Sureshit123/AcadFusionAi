@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback Analytics | AcadFusion AI</title>
+    <meta name="description" content="Admin dashboard for teacher feedback analytics – view top-rated faculty, ratings by subject, department, semester, and export reports.">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; min-height: 100vh; background: var(--bg-primary, #0f172a); color: var(--text-primary, #f1f5f9); }
+        .page-wrapper { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+        .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2.5rem; flex-wrap: wrap; gap: 1rem; }
+        .brand-link { display: flex; align-items: center; gap: 0.75rem; text-decoration: none; }
+        .brand-link img { height: 36px; }
+        .brand-name { font-weight: 800; font-size: 1.1rem; background: linear-gradient(135deg, #a78bfa, #60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .nav-links { display: flex; gap: 1rem; align-items: center; }
+        .nav-links a { color: #94a3b8; text-decoration: none; font-size: 0.85rem; font-weight: 500; padding: 0.4rem 0.9rem; border-radius: 8px; border: 1px solid transparent; transition: all 0.2s; }
+        .nav-links a:hover { border-color: #a78bfa; color: #a78bfa; }
+        .nav-links a.active { background: rgba(167,139,250,0.12); color: #a78bfa; border-color: rgba(167,139,250,0.3); }
+        h1 { font-size: 1.8rem; font-weight: 800; background: linear-gradient(135deg, #f1f5f9, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.3rem; }
+        .subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 2rem; }
+
+        /* KPI Cards */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .kpi-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 1.2rem; text-align: center; }
+        .kpi-icon { font-size: 1.6rem; margin-bottom: 0.4rem; }
+        .kpi-value { font-size: 1.8rem; font-weight: 800; color: #a78bfa; }
+        .kpi-label { font-size: 0.72rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.3rem; }
+
+        /* Charts */
+        .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+        .chart-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 1.5rem; }
+        .chart-card h3 { font-size: 0.85rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 1.2rem; }
+        .chart-canvas-wrap { position: relative; height: 240px; }
+
+        /* Filters */
+        .filter-bar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1rem; margin-bottom: 1.5rem; }
+        .filter-bar select, .filter-bar input { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 0.5rem 0.75rem; color: #f1f5f9; font-size: 0.85rem; flex: 1; min-width: 130px; }
+        .filter-bar select:focus, .filter-bar input:focus { outline: none; border-color: #7c3aed; }
+        .filter-bar select option { background: #1e293b; }
+        .filter-btn { padding: 0.5rem 1.2rem; background: #7c3aed; border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: opacity 0.2s; }
+        .filter-btn:hover { opacity: 0.85; }
+        .filter-btn.secondary { background: rgba(255,255,255,0.08); }
+
+        /* Export buttons */
+        .export-bar { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        .export-btn { padding: 0.55rem 1.2rem; border-radius: 10px; border: 1px solid; font-size: 0.82rem; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; transition: all 0.2s; }
+        .export-btn.excel { color: #22c55e; border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.08); }
+        .export-btn.csv { color: #0ea5e9; border-color: rgba(14,165,233,0.3); background: rgba(14,165,233,0.08); }
+        .export-btn.pdf { color: #ef4444; border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); }
+        .export-btn:hover { opacity: 0.8; transform: translateY(-1px); }
+
+        /* Table */
+        .table-section { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; overflow: hidden; }
+        .table-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .table-header h3 { font-size: 0.9rem; font-weight: 700; color: #e2e8f0; }
+        table { width: 100%; border-collapse: collapse; }
+        thead th { padding: 0.75rem 1rem; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; background: rgba(255,255,255,0.02); text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        tbody td { padding: 0.85rem 1rem; font-size: 0.84rem; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr:hover { background: rgba(255,255,255,0.03); }
+        .rating-badge { display: inline-block; padding: 0.25rem 0.6rem; border-radius: 6px; font-weight: 700; font-size: 0.78rem; }
+        .rating-high { background: rgba(34,197,94,0.15); color: #22c55e; }
+        .rating-mid { background: rgba(234,179,8,0.15); color: #eab308; }
+        .rating-low { background: rgba(239,68,68,0.15); color: #ef4444; }
+        .empty-state { text-align: center; padding: 3rem; color: #475569; }
+        .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+
+        /* Expandable comments row */
+        .comments-row td { background: rgba(124,58,237,0.05); border-left: 3px solid #7c3aed; padding: 0.75rem 1.5rem; }
+        .comment-chip { display: inline-block; background: rgba(255,255,255,0.05); border-radius: 6px; padding: 0.35rem 0.7rem; margin: 0.25rem; font-size: 0.78rem; color: #94a3b8; border: 1px solid rgba(255,255,255,0.08); }
+
+        .top-badge { background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; padding: 0.2rem 0.5rem; border-radius: 5px; font-size: 0.7rem; font-weight: 700; margin-left: 0.4rem; }
+        .low-badge { background: rgba(239,68,68,0.2); color: #ef4444; padding: 0.2rem 0.5rem; border-radius: 5px; font-size: 0.7rem; font-weight: 700; margin-left: 0.4rem; }
+
+        @media (max-width: 700px) { .chart-row { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="page-wrapper">
+    <header class="page-header">
+        <a href="{{ url_for('main.hub') }}" class="brand-link">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="AcadFusion AI">
+            <span class="brand-name">AcadFusion AI</span>
+        </a>
+        <nav class="nav-links">
+            <a href="{{ url_for('feedback.index') }}">Feedback Form</a>
+            <a href="{{ url_for('feedback.admin_dashboard') }}" class="active">Admin Analytics</a>
+            <a href="{{ url_for('main.hub') }}">Hub</a>
+        </nav>
+    </header>
+
+    <h1>Feedback Analytics</h1>
+    <p class="subtitle">Visualize faculty ratings, export reports, and identify top & lowest rated teachers.</p>
+
+    <!-- KPI Row -->
+    <div class="kpi-grid" id="kpiGrid">
+        <div class="kpi-card"><div class="kpi-icon">📋</div><div class="kpi-value" id="kpiTotal">—</div><div class="kpi-label">Total Feedbacks</div></div>
+        <div class="kpi-card"><div class="kpi-icon">👩‍🏫</div><div class="kpi-value" id="kpiTeachers">—</div><div class="kpi-label">Faculty Rated</div></div>
+        <div class="kpi-card"><div class="kpi-icon">⭐</div><div class="kpi-value" id="kpiOverall">—</div><div class="kpi-label">Overall Avg</div></div>
+        <div class="kpi-card"><div class="kpi-icon">📚</div><div class="kpi-value" id="kpiTeaching">—</div><div class="kpi-label">Teaching Avg</div></div>
+        <div class="kpi-card"><div class="kpi-icon">💬</div><div class="kpi-value" id="kpiComm">—</div><div class="kpi-label">Comm. Avg</div></div>
+        <div class="kpi-card"><div class="kpi-icon">🔬</div><div class="kpi-value" id="kpiPractical">—</div><div class="kpi-label">Practical Avg</div></div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar">
+        <select id="filterDept"><option value="">All Departments</option></select>
+        <select id="filterSem"><option value="">All Semesters</option>
+            <option value="1">Semester 1</option><option value="2">Semester 2</option>
+            <option value="3">Semester 3</option><option value="4">Semester 4</option>
+            <option value="5">Semester 5</option><option value="6">Semester 6</option>
+            <option value="7">Semester 7</option><option value="8">Semester 8</option>
+        </select>
+        <input type="text" id="filterSearch" placeholder="Search faculty or subject…" oninput="filterTable()">
+        <button class="filter-btn" onclick="loadData()">Apply</button>
+        <button class="filter-btn secondary" onclick="clearFilters()">Clear</button>
+    </div>
+
+    <!-- Charts -->
+    <div class="chart-row">
+        <div class="chart-card">
+            <h3>Rating Distribution</h3>
+            <div class="chart-canvas-wrap"><canvas id="ratingPieChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <h3>Faculty Performance (Top 8)</h3>
+            <div class="chart-canvas-wrap"><canvas id="facultyBarChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- Export Buttons -->
+    <div class="export-bar">
+        <a href="/api/feedback/export/excel" class="export-btn excel" target="_blank">⬇ Excel Report</a>
+        <a href="/api/feedback/export/csv" class="export-btn csv" target="_blank">⬇ CSV Report</a>
+        <a href="/api/feedback/export/pdf" class="export-btn pdf" target="_blank">⬇ PDF Summary</a>
+    </div>
+
+    <!-- Teacher Table -->
+    <div class="table-section">
+        <div class="table-header">
+            <h3 id="tableTitle">Teacher Feedback Summary</h3>
+        </div>
+        <div id="tableContainer">
+            <div class="empty-state"><div class="icon">📊</div><p>Loading analytics…</p></div>
+        </div>
+    </div>
+</div>
+
+<script>
+let analyticsData = {};
+let allTeacherStats = [];
+let pieChart, barChart;
+
+async function loadData() {
+    const dept = document.getElementById('filterDept').value;
+    const sem = document.getElementById('filterSem').value;
+    let url = '/api/feedback/admin_data?';
+    if (dept) url += `department=${encodeURIComponent(dept)}&`;
+    if (sem) url += `semester=${sem}&`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+    analyticsData = data.analytics || {};
+    allTeacherStats = analyticsData.teacher_stats || [];
+
+    updateKPIs(analyticsData);
+    updateCharts(analyticsData);
+    populateDeptFilter(analyticsData.department_stats || []);
+    filterTable();
+}
+
+function updateKPIs(a) {
+    document.getElementById('kpiTotal').textContent = a.total_feedbacks || 0;
+    document.getElementById('kpiTeachers').textContent = a.total_teachers || 0;
+    document.getElementById('kpiOverall').textContent = `${a.overall_average || 0}/5`;
+    document.getElementById('kpiTeaching').textContent = `${a.teaching_average || 0}/5`;
+    document.getElementById('kpiComm').textContent = `${a.communication_average || 0}/5`;
+    document.getElementById('kpiPractical').textContent = `${a.practical_average || 0}/5`;
+}
+
+function updateCharts(a) {
+    const dist = a.rating_distribution || {1:0,2:0,3:0,4:0,5:0};
+    const pieCtx = document.getElementById('ratingPieChart').getContext('2d');
+    if (pieChart) pieChart.destroy();
+    pieChart = new Chart(pieCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['1 Star','2 Stars','3 Stars','4 Stars','5 Stars'],
+            datasets: [{ data: [dist[1],dist[2],dist[3],dist[4],dist[5]], backgroundColor: ['#ef4444','#f97316','#eab308','#22c55e','#7c3aed'], borderWidth: 0 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 } } } } }
+    });
+
+    const top8 = (a.teacher_stats || []).slice(0, 8);
+    const barCtx = document.getElementById('facultyBarChart').getContext('2d');
+    if (barChart) barChart.destroy();
+    barChart = new Chart(barCtx, {
+        type: 'bar',
+        data: {
+            labels: top8.map(t => t.faculty_name.split(' ').slice(-1)[0]),
+            datasets: [{ label: 'Avg Overall Rating', data: top8.map(t => t.avg_overall), backgroundColor: '#7c3aed', borderRadius: 6 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            scales: {
+                y: { min: 0, max: 5, ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                x: { ticks: { color: '#64748b' }, grid: { display: false } }
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+
+function populateDeptFilter(deptStats) {
+    const sel = document.getElementById('filterDept');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All Departments</option>';
+    deptStats.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.department;
+        opt.textContent = d.department;
+        sel.appendChild(opt);
+    });
+    if (current) sel.value = current;
+}
+
+function filterTable() {
+    const search = document.getElementById('filterSearch').value.toLowerCase();
+    const filtered = allTeacherStats.filter(t =>
+        !search ||
+        (t.faculty_name || '').toLowerCase().includes(search) ||
+        (t.subject_name || '').toLowerCase().includes(search) ||
+        (t.subject_code || '').toLowerCase().includes(search)
+    );
+    renderTable(filtered);
+}
+
+function ratingClass(val) {
+    if (val >= 4) return 'rating-high';
+    if (val >= 3) return 'rating-mid';
+    return 'rating-low';
+}
+
+function renderTable(stats) {
+    const top1 = analyticsData.top_teacher;
+    const low1 = analyticsData.lowest_teacher;
+
+    const container = document.getElementById('tableContainer');
+    if (!stats.length) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>No feedback found. Submit some feedback first!</p></div>';
+        document.getElementById('tableTitle').textContent = 'No Results';
+        return;
+    }
+
+    document.getElementById('tableTitle').textContent = `Teacher Feedback Summary (${stats.length} faculty)`;
+
+    let rows = '';
+    stats.forEach((t, idx) => {
+        const isTop = top1 && t.faculty_name === top1.faculty_name && t.subject_code === top1.subject_code;
+        const isLow = low1 && t.faculty_name === low1.faculty_name && t.subject_code === low1.subject_code && stats.length > 1;
+        const commentChips = (t.comments || []).map(c => `<span class="comment-chip">"${c.text}" — ${c.student_usn}</span>`).join('');
+
+        rows += `<tr>
+            <td>
+                <strong>${t.faculty_name}</strong>
+                ${isTop ? '<span class="top-badge">TOP</span>' : ''}
+                ${isLow ? '<span class="low-badge">LOW</span>' : ''}
+            </td>
+            <td><span style="color:#a78bfa;font-weight:600;">${t.subject_code}</span><br><span style="color:#64748b;font-size:0.78rem;">${t.subject_name}</span></td>
+            <td>${t.department}</td>
+            <td>Sem ${t.semester}</td>
+            <td>${t.count}</td>
+            <td><span class="rating-badge ${ratingClass(t.avg_overall)}">${t.avg_overall}/5</span></td>
+            <td style="color:#94a3b8;font-size:0.8rem;">${t.avg_teaching} / ${t.avg_communication} / ${t.avg_knowledge} / ${t.avg_doubt} / ${t.avg_practical}</td>
+            <td>${t.comments.length > 0 ? `<button onclick="toggleComments(${idx})" style="background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.3);color:#a78bfa;border-radius:6px;padding:0.25rem 0.7rem;cursor:pointer;font-size:0.78rem;">${t.comments.length} comments</button>` : '<span style="color:#475569">—</span>'}</td>
+        </tr>
+        <tr id="comments_${idx}" style="display:none;" class="comments-row">
+            <td colspan="8">${commentChips || '<em style="color:#64748b">No comments</em>'}</td>
+        </tr>`;
+    });
+
+    container.innerHTML = `<table>
+        <thead>
+            <tr>
+                <th>Faculty Name</th>
+                <th>Subject</th>
+                <th>Department</th>
+                <th>Semester</th>
+                <th>Feedbacks</th>
+                <th>Overall</th>
+                <th style="font-size:0.68rem;">Teach / Comm / Know / Doubt / Practical</th>
+                <th>Comments</th>
+            </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function toggleComments(idx) {
+    const row = document.getElementById(`comments_${idx}`);
+    row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+}
+
+function clearFilters() {
+    document.getElementById('filterDept').value = '';
+    document.getElementById('filterSem').value = '';
+    document.getElementById('filterSearch').value = '';
+    loadData();
+}
+
+loadData();
+</script>
+</body>
+</html>

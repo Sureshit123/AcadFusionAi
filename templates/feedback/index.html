@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Feedback | AcadFusion AI</title>
+    <meta name="description" content="Submit anonymous or identified student feedback for faculty at your institution. Faculty data is automatically loaded from the Institution Hub.">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        :root {
+            --star-color: #f59e0b;
+            --star-empty: #334155;
+            --card-bg: rgba(255,255,255,0.04);
+            --form-radius: 16px;
+        }
+
+        body { font-family: 'Inter', sans-serif; min-height: 100vh; background: var(--bg-primary, #0f172a); color: var(--text-primary, #f1f5f9); }
+
+        .page-wrapper { max-width: 820px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+        .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2.5rem; flex-wrap: wrap; gap: 1rem; }
+
+        .brand-link { display: flex; align-items: center; gap: 0.75rem; text-decoration: none; }
+        .brand-link img { height: 36px; }
+        .brand-name { font-weight: 800; font-size: 1.1rem; background: linear-gradient(135deg, #a78bfa, #60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+        .nav-links { display: flex; gap: 1rem; align-items: center; }
+        .nav-links a { color: var(--text-secondary, #94a3b8); text-decoration: none; font-size: 0.85rem; font-weight: 500; padding: 0.4rem 0.9rem; border-radius: 8px; border: 1px solid transparent; transition: all 0.2s; }
+        .nav-links a:hover { border-color: #a78bfa; color: #a78bfa; }
+        .nav-links a.active { background: rgba(167,139,250,0.12); color: #a78bfa; border-color: rgba(167,139,250,0.3); }
+
+        h1 { font-size: 1.8rem; font-weight: 800; background: linear-gradient(135deg, #f1f5f9, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.3rem; }
+        .subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 2rem; }
+
+        .form-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--form-radius); padding: 2rem; margin-bottom: 1.5rem; }
+
+        .form-section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #7c3aed; margin-bottom: 1.2rem; border-left: 3px solid #7c3aed; padding-left: 0.6rem; }
+
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+        label { font-size: 0.82rem; font-weight: 600; color: #94a3b8; }
+        select, input, textarea { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 0.7rem 1rem; color: #f1f5f9; font-family: 'Inter', sans-serif; font-size: 0.9rem; width: 100%; box-sizing: border-box; transition: border-color 0.2s; }
+        select:focus, input:focus, textarea:focus { outline: none; border-color: #7c3aed; }
+        select option { background: #1e293b; }
+        textarea { resize: vertical; min-height: 80px; }
+
+        /* Subject Info Card */
+        #subjectInfoCard { display: none; background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(96,165,250,0.08)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 1.2rem; margin-bottom: 1rem; }
+        #subjectInfoCard .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+        .info-item .info-label { font-size: 0.7rem; color: #64748b; font-weight: 600; text-transform: uppercase; }
+        .info-item .info-value { font-size: 0.9rem; color: #a78bfa; font-weight: 700; }
+
+        /* Star Rating */
+        .star-group { margin-bottom: 1.2rem; }
+        .star-label { font-size: 0.82rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; }
+        .stars { display: flex; gap: 6px; }
+        .star { font-size: 1.6rem; cursor: pointer; transition: transform 0.1s, color 0.1s; color: var(--star-empty); user-select: none; }
+        .star:hover, .star.active { color: var(--star-color); transform: scale(1.15); }
+        .star-value { font-size: 0.8rem; color: #f59e0b; font-weight: 700; min-width: 24px; text-align: right; }
+
+        /* Toggle */
+        .toggle-group { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+        .toggle { width: 44px; height: 24px; background: #334155; border: none; border-radius: 99px; cursor: pointer; position: relative; transition: background 0.2s; }
+        .toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; background: white; border-radius: 50%; transition: left 0.2s; }
+        .toggle.on { background: #7c3aed; }
+        .toggle.on::after { left: 23px; }
+        .toggle-label { font-size: 0.85rem; color: #94a3b8; }
+
+        /* Submit */
+        .submit-btn { width: 100%; padding: 1rem; background: linear-gradient(135deg, #7c3aed, #4f46e5); color: white; border: none; border-radius: 12px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s, transform 0.15s; }
+        .submit-btn:hover { opacity: 0.9; transform: translateY(-2px); }
+        .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Toast */
+        #toast { position: fixed; bottom: 2rem; right: 2rem; padding: 1rem 1.5rem; border-radius: 12px; font-weight: 600; font-size: 0.9rem; z-index: 9999; max-width: 380px; display: none; animation: fadeInUp 0.3s ease; }
+        #toast.success { background: rgba(22,163,74,0.9); color: white; border: 1px solid #16a34a; }
+        #toast.error { background: rgba(239,68,68,0.9); color: white; border: 1px solid #ef4444; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        .loading { text-align: center; padding: 2rem; color: #64748b; }
+
+        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } #subjectInfoCard .info-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="page-wrapper">
+    <header class="page-header">
+        <a href="{{ url_for('main.hub') }}" class="brand-link">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="AcadFusion AI">
+            <span class="brand-name">AcadFusion AI</span>
+        </a>
+        <nav class="nav-links">
+            <a href="{{ url_for('feedback.index') }}" class="active">Feedback Form</a>
+            <a href="{{ url_for('feedback.admin_dashboard') }}">Admin Analytics</a>
+            <a href="{{ url_for('main.hub') }}">Hub</a>
+        </nav>
+    </header>
+
+    <h1>Teacher Feedback</h1>
+    <p class="subtitle">Your feedback helps improve teaching quality. Faculty data is automatically loaded from the Institution Hub.</p>
+
+    <div id="loadingState" class="loading">Loading subject & faculty data from Institution Hub…</div>
+
+    <form id="feedbackForm" style="display:none;" onsubmit="submitFeedback(event)">
+        <!-- Subject Selection -->
+        <div class="form-card">
+            <p class="form-section-title">Step 1 – Select Subject & Faculty</p>
+            <div class="form-group">
+                <label for="subjectSelect">Subject / Faculty *</label>
+                <select id="subjectSelect" required onchange="onSubjectChange()">
+                    <option value="">— Choose a subject taught by a faculty member —</option>
+                </select>
+            </div>
+            <div id="subjectInfoCard">
+                <div class="info-grid">
+                    <div class="info-item"><div class="info-label">Faculty</div><div class="info-value" id="info_faculty">—</div></div>
+                    <div class="info-item"><div class="info-label">Subject Code</div><div class="info-value" id="info_code">—</div></div>
+                    <div class="info-item"><div class="info-label">Department</div><div class="info-value" id="info_dept">—</div></div>
+                    <div class="info-item"><div class="info-label">Semester</div><div class="info-value" id="info_sem">—</div></div>
+                    <div class="info-item"><div class="info-label">Credits</div><div class="info-value" id="info_credits">—</div></div>
+                    <div class="info-item"><div class="info-label">Subject Type</div><div class="info-value" id="info_type">—</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Student Info -->
+        <div class="form-card">
+            <p class="form-section-title">Step 2 – Student Details</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="studentUsn">Your USN <span id="anonBadge" style="color:#7c3aed;font-size:0.75rem;">(hidden if anonymous)</span></label>
+                    <input type="text" id="studentUsn" placeholder="e.g. 1BM23CS001" style="text-transform:uppercase;" maxlength="12">
+                </div>
+                <div class="form-group" style="justify-content: flex-end; padding-bottom: 0.2rem;">
+                    <label>Anonymous Feedback</label>
+                    <div class="toggle-group" style="margin-top: 0.6rem;">
+                        <button type="button" class="toggle on" id="anonToggle" onclick="toggleAnon()"></button>
+                        <span class="toggle-label" id="anonLabel">Your USN will be hidden</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Star Ratings -->
+        <div class="form-card">
+            <p class="form-section-title">Step 3 – Rate the Faculty</p>
+            <div id="starRatings"></div>
+        </div>
+
+        <!-- Comments -->
+        <div class="form-card">
+            <p class="form-section-title">Step 4 – Additional Comments</p>
+            <div class="form-group">
+                <label for="comments">Comments (optional)</label>
+                <textarea id="comments" placeholder="Share your thoughts, suggestions, or any specific experience…"></textarea>
+            </div>
+        </div>
+
+        <button type="submit" class="submit-btn" id="submitBtn">Submit Feedback</button>
+    </form>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const RATINGS = [
+    { key: 'overall_rating', label: 'Overall Rating', desc: '' },
+    { key: 'teaching_rating', label: 'Teaching Quality', desc: '' },
+    { key: 'communication_rating', label: 'Communication Skills', desc: '' },
+    { key: 'knowledge_rating', label: 'Subject Knowledge', desc: '' },
+    { key: 'doubt_rating', label: 'Doubt Solving Ability', desc: '' },
+    { key: 'practical_rating', label: 'Practical Knowledge', desc: '' }
+];
+let selectedRatings = {};
+let subjectsData = [];
+let isAnonymous = true;
+let selectedSubject = null;
+
+async function loadFormData() {
+    try {
+        const res = await fetch('/api/feedback/form_data');
+        const data = await res.json();
+        subjectsData = data.subjects || [];
+
+        const sel = document.getElementById('subjectSelect');
+        if (!subjectsData.length) {
+            sel.innerHTML = '<option value="">No subjects found in Institution Hub</option>';
+        } else {
+            sel.innerHTML = '<option value="">— Choose a subject taught by a faculty member —</option>';
+            subjectsData.forEach((sub, idx) => {
+                const label = `${sub.subject_name} (${sub.subject_code}) — ${sub.faculty_name} [Sem ${sub.semester}]`;
+                sel.innerHTML += `<option value="${idx}">${label}</option>`;
+            });
+        }
+
+        buildStarRatings();
+        document.getElementById('loadingState').style.display = 'none';
+        document.getElementById('feedbackForm').style.display = 'block';
+    } catch (e) {
+        document.getElementById('loadingState').innerHTML = '<span style="color:#ef4444">Failed to load data from Institution Hub. Please try again.</span>';
+    }
+}
+
+function buildStarRatings() {
+    const container = document.getElementById('starRatings');
+    container.innerHTML = '';
+    RATINGS.forEach(({ key, label }) => {
+        selectedRatings[key] = 0;
+        container.innerHTML += `
+            <div class="star-group">
+                <div class="star-label">
+                    <span>${label}</span>
+                    <span class="star-value" id="val_${key}">—</span>
+                </div>
+                <div class="stars" id="stars_${key}">
+                    ${[1,2,3,4,5].map(n => `<span class="star" onclick="setRating('${key}',${n})" onmouseover="hoverStars('${key}',${n})" onmouseout="resetHover('${key}')">★</span>`).join('')}
+                </div>
+            </div>`;
+    });
+}
+
+function setRating(key, val) {
+    selectedRatings[key] = val;
+    const stars = document.querySelectorAll(`#stars_${key} .star`);
+    stars.forEach((s, i) => s.classList.toggle('active', i < val));
+    document.getElementById(`val_${key}`).textContent = `${val} / 5`;
+}
+
+function hoverStars(key, val) {
+    const stars = document.querySelectorAll(`#stars_${key} .star`);
+    stars.forEach((s, i) => s.classList.toggle('active', i < val));
+}
+
+function resetHover(key) {
+    const val = selectedRatings[key] || 0;
+    const stars = document.querySelectorAll(`#stars_${key} .star`);
+    stars.forEach((s, i) => s.classList.toggle('active', i < val));
+}
+
+function onSubjectChange() {
+    const idx = document.getElementById('subjectSelect').value;
+    if (idx === '') { document.getElementById('subjectInfoCard').style.display = 'none'; selectedSubject = null; return; }
+    selectedSubject = subjectsData[parseInt(idx)];
+    document.getElementById('info_faculty').textContent = selectedSubject.faculty_name || '—';
+    document.getElementById('info_code').textContent = selectedSubject.subject_code || '—';
+    document.getElementById('info_dept').textContent = selectedSubject.department || '—';
+    document.getElementById('info_sem').textContent = selectedSubject.semester != null ? `Semester ${selectedSubject.semester}` : '—';
+    document.getElementById('info_credits').textContent = selectedSubject.credits != null ? selectedSubject.credits : '—';
+    document.getElementById('info_type').textContent = selectedSubject.subject_type || 'Regular';
+    document.getElementById('subjectInfoCard').style.display = 'block';
+}
+
+function toggleAnon() {
+    isAnonymous = !isAnonymous;
+    const t = document.getElementById('anonToggle');
+    const l = document.getElementById('anonLabel');
+    t.classList.toggle('on', isAnonymous);
+    l.textContent = isAnonymous ? 'Your USN will be hidden' : 'Your USN will be recorded';
+    document.getElementById('studentUsn').disabled = isAnonymous;
+}
+
+function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = type;
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 4500);
+}
+
+async function submitFeedback(e) {
+    e.preventDefault();
+    if (!selectedSubject) { showToast('Please select a subject and faculty.', 'error'); return; }
+
+    for (const { key, label } of RATINGS) {
+        if (!selectedRatings[key] || selectedRatings[key] < 1) {
+            showToast(`Please rate "${label}" (1–5 stars).`, 'error'); return;
+        }
+    }
+
+    const payload = {
+        subject_code: selectedSubject.subject_code,
+        subject_name: selectedSubject.subject_name,
+        faculty_name: selectedSubject.faculty_name,
+        credits: selectedSubject.credits,
+        semester: selectedSubject.semester,
+        department: selectedSubject.department,
+        anonymous: isAnonymous,
+        student_usn: isAnonymous ? '' : (document.getElementById('studentUsn').value.trim().toUpperCase()),
+        comments: document.getElementById('comments').value.trim(),
+        ...selectedRatings
+    };
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+
+    try {
+        const res = await fetch('/api/feedback/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Feedback submitted successfully! Thank you.', 'success');
+            document.getElementById('feedbackForm').reset();
+            buildStarRatings();
+            selectedSubject = null;
+            document.getElementById('subjectInfoCard').style.display = 'none';
+        } else {
+            showToast(data.error || 'Submission failed. Please try again.', 'error');
+        }
+    } catch (err) {
+        showToast('Network error. Please try again.', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Submit Feedback';
+    }
+}
+
+loadFormData();
+</script>
+</body>
+</html>

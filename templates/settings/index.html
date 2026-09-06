@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Institution Configuration | AcadFusion AI</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            gap: 2rem;
+            margin-top: 2rem;
+            min-height: 70vh;
+        }
+
+        .settings-sidebar {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .settings-menu-item {
+            padding: 0.85rem 1.25rem;
+            border-radius: 10px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .settings-menu-item:hover, .settings-menu-item.active {
+            background: var(--accent-primary);
+            color: white;
+            box-shadow: 0 4px 12px var(--accent-glow);
+        }
+
+        .settings-panel {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 2.5rem;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
+            display: none;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        .settings-panel.active {
+            display: block;
+        }
+
+        .form-grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .form-grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .logo-preview-box {
+            width: 100px;
+            height: 100px;
+            border: 2px dashed var(--glass-border);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            margin-top: 0.5rem;
+            background: rgba(0,0,0,0.2);
+            position: relative;
+        }
+
+        .logo-preview-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .accreditation-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(124, 58, 237, 0.15);
+            border: 1px solid var(--accent-primary);
+            color: var(--text-primary);
+            padding: 0.4rem 0.8rem;
+            border-radius: 99px;
+            font-size: 0.85rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .accreditation-tag button {
+            background: none;
+            border: none;
+            color: var(--error);
+            cursor: pointer;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tags-container {
+            border: 1px solid var(--glass-border);
+            padding: 1rem;
+            border-radius: 12px;
+            min-height: 80px;
+            background: rgba(0,0,0,0.1);
+        }
+
+        .data-table-container {
+            margin-top: 1.5rem;
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+            background: rgba(0,0,0,0.15);
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .data-table th, .data-table td {
+            padding: 1rem 1.25rem;
+            text-align: left;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .data-table th {
+            background: rgba(0,0,0,0.3);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .data-table td {
+            color: var(--text-secondary);
+        }
+
+        .data-table tr:hover td {
+            color: var(--text-primary);
+            background: rgba(255,255,255,0.02);
+        }
+
+        .delete-btn-sm {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 0.35rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .delete-btn-sm:hover {
+            background: var(--error);
+            color: white;
+        }
+
+        .edit-btn-sm {
+            background: rgba(6, 182, 212, 0.1);
+            color: var(--accent-secondary);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            padding: 0.35rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-right: 0.5rem;
+        }
+
+        .edit-btn-sm:hover {
+            background: var(--accent-secondary);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container" style="max-width: 1200px; padding: 2rem;">
+        <div class="header">
+            <a href="/hub" class="brand-header">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="AcadFusion AI" class="brand-logo">
+                <div class="brand-info">
+                    <span class="brand-name">Configuration Hub</span>
+                    <span class="brand-tagline">Institution & Report Settings</span>
+                </div>
+            </a>
+            <div style="display: flex; align-items: center; gap: 1.5rem;">
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Light/Dark Mode">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                </button>
+                <a href="/hub" class="btn" style="padding: 0.5rem 1.25rem; font-size: 0.85rem; border: 1px solid var(--glass-border); width: auto; background: none;">Back to Hub</a>
+            </div>
+        </div>
+
+        <div class="settings-grid">
+            <div class="settings-sidebar">
+                <div class="settings-menu-item active" onclick="switchPanel(0, 'profile')">🏫 Institution Details</div>
+                <div class="settings-menu-item" onclick="switchPanel(1, 'departments')">🏢 Departments</div>
+                <div class="settings-menu-item" onclick="switchPanel(2, 'faculty')">👨‍🏫 Faculty Master</div>
+                <div class="settings-menu-item" onclick="switchPanel(3, 'subjects')">📖 Subject Master</div>
+                <div class="settings-menu-item" onclick="switchPanel(4, 'defaults')">⚙️ Report Defaults</div>
+            </div>
+
+            <div class="settings-content">
+                <!-- PANEL 0: INSTITUTION DETAILS -->
+                <div class="settings-panel active" id="panel-profile">
+                    <h2>Institution Details</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">Configure primary college information and accreditations for reports.</p>
+                    <form id="profileForm" onsubmit="saveProfile(event)">
+                        <div class="form-grid-3">
+                            <div class="input-group">
+                                <label for="college_name">College Name</label>
+                                <input type="text" id="college_name" placeholder="e.g. BLDE Association's V.P. Dr. P.G. Halakatti College of Engg." required>
+                            </div>
+                            <div class="input-group">
+                                <label for="short_name">Short Name</label>
+                                <input type="text" id="short_name" placeholder="e.g. BLDEA CET" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="principal_name">Principal Name</label>
+                                <input type="text" id="principal_name" placeholder="e.g. Dr. P. B. Patil">
+                            </div>
+                        </div>
+
+                        <div class="form-grid-2">
+                            <div class="input-group">
+                                <label for="logo_file">College Logo (Image Upload)</label>
+                                <input type="file" id="logo_file" accept="image/*" onchange="previewLogo(this, 'college-logo-preview')">
+                                <div class="logo-preview-box" id="college-logo-preview">
+                                    <span style="font-size:0.8rem; color:var(--text-secondary)">No Logo</span>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label for="website">Website</label>
+                                <input type="text" id="website" placeholder="e.g. www.bldeacet.ac.in">
+                            </div>
+                        </div>
+
+                        <div class="input-group">
+                            <label for="address">College Address</label>
+                            <input type="text" id="address" placeholder="e.g. Ashram Road, Vijayapura">
+                        </div>
+
+                        <div class="form-grid-3">
+                            <div class="input-group">
+                                <label for="city">City</label>
+                                <input type="text" id="city" placeholder="e.g. Vijayapura">
+                            </div>
+                            <div class="input-group">
+                                <label for="state">State</label>
+                                <input type="text" id="state" placeholder="e.g. Karnataka">
+                            </div>
+                            <div class="input-group">
+                                <label for="pincode">Pincode</label>
+                                <input type="text" id="pincode" placeholder="e.g. 586103">
+                            </div>
+                        </div>
+
+                        <div class="form-grid-2">
+                            <div class="input-group">
+                                <label for="email">Email</label>
+                                <input type="email" id="email" placeholder="e.g. principal@bldeacet.ac.in">
+                            </div>
+                            <div class="input-group">
+                                <label for="phone">Phone Number</label>
+                                <input type="text" id="phone" placeholder="e.g. 08352-261120">
+                            </div>
+                        </div>
+
+                        <!-- Accreditation Details -->
+                        <div class="input-group" style="margin-top: 1rem;">
+                            <label>Accreditations & Certifications</label>
+                            <div style="display:flex; gap:1rem; margin-bottom: 0.5rem;">
+                                <input type="text" id="accreditation_input" placeholder="e.g. NAAC A+ Grade (UGC recognized)">
+                                <button type="button" class="btn" style="width: auto; padding:0 1.5rem;" onclick="addAccreditation()">Add</button>
+                            </div>
+                            <div class="tags-container" id="accreditation-tags"></div>
+                        </div>
+
+                        <button type="submit" class="btn" style="margin-top: 1rem;">Save Institution Profile</button>
+                    </form>
+                </div>
+
+                <!-- PANEL 1: DEPARTMENTS -->
+                <div class="settings-panel" id="panel-departments">
+                    <h2>Departments</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">Add and manage multiple academic departments.</p>
+                    <form id="departmentForm" onsubmit="saveDepartment(event)" style="border-bottom: 1px solid var(--glass-border); padding-bottom: 2rem; margin-bottom: 2rem;">
+                        <div class="form-grid-2">
+                            <div class="input-group">
+                                <label for="dept_name">Department Name</label>
+                                <input type="text" id="dept_name" placeholder="e.g. Computer Science & Engineering" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="dept_code">Department Code (Short)</label>
+                                <input type="text" id="dept_code" placeholder="e.g. CSE / CS" required>
+                            </div>
+                        </div>
+                        <div class="form-grid-2">
+                            <div class="input-group">
+                                <label for="hod_name">Head of Department (HOD)</label>
+                                <input type="text" id="hod_name" placeholder="e.g. Dr. P. S. Patil" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="coord_name">Coordinator Name</label>
+                                <input type="text" id="coord_name" placeholder="e.g. Prof. R. H. Goudar" required>
+                            </div>
+                        </div>
+                        <div class="form-grid-2" style="margin-top: 1rem;">
+                            <div class="input-group">
+                                <label for="dept_logo_file">Dept Logo (optional)</label>
+                                <input type="file" id="dept_logo_file" accept="image/*" onchange="previewLogo(this, 'dept-logo-preview')">
+                                <div class="logo-preview-box" id="dept-logo-preview">
+                                    <span style="font-size:0.8rem; color:var(--text-secondary)">No Logo</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 1rem;">
+                            <button type="submit" id="deptSubmitBtn" class="btn" style="width: auto; padding: 0.8rem 2rem;">Add Department</button>
+                            <button type="button" id="deptCancelBtn" class="btn" style="width: auto; padding: 0.8rem 2rem; background: rgba(255,255,255,0.1); border: 1px solid var(--glass-border); display: none;" onclick="cancelDeptEdit()">Cancel</button>
+                        </div>
+                    </form>
+
+                    <h3>Department List</h3>
+                    <div class="data-table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Logo</th>
+                                    <th>Dept Code</th>
+                                    <th>Dept Name</th>
+                                    <th>HOD Name</th>
+                                    <th>Coordinator Name</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dept-list-body">
+                                <tr><td colspan="6" style="text-align:center">Loading departments...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- PANEL 2: FACULTY MASTER -->
+                <div class="settings-panel" id="panel-faculty">
+                    <h2>Faculty Master</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">Maintain a centralized faculty database for teaching assignments.</p>
+                    <form id="facultyForm" onsubmit="saveFaculty(event)" style="border-bottom: 1px solid var(--glass-border); padding-bottom: 2rem; margin-bottom: 2rem;">
+                        <div class="form-grid-3">
+                            <div class="input-group">
+                                <label for="fac_name">Faculty Name</label>
+                                <input type="text" id="fac_name" placeholder="e.g. Dr. A. Kumar" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="fac_designation">Designation</label>
+                                <input type="text" id="fac_designation" placeholder="e.g. Associate Professor" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="fac_qualification">Qualification</label>
+                                <input type="text" id="fac_qualification" placeholder="e.g. M.Tech, Ph.D" required>
+                            </div>
+                        </div>
+                        <div class="form-grid-3">
+                            <div class="input-group">
+                                <label for="fac_email">Email</label>
+                                <input type="email" id="fac_email" placeholder="e.g. akumar@bldeacet.ac.in" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="fac_phone">Phone Number</label>
+                                <input type="text" id="fac_phone" placeholder="e.g. 9876543210">
+                            </div>
+                            <div class="input-group">
+                                <label for="fac_dept">Department</label>
+                                <select id="fac_dept" required>
+                                    <option value="">Select Department</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn" style="width: auto; padding: 0.8rem 2rem;">Add Faculty</button>
+                    </form>
+
+                    <h3>Faculty Database</h3>
+                    <div class="data-table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Designation</th>
+                                    <th>Department</th>
+                                    <th>Email</th>
+                                    <th>Phone</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="faculty-list-body">
+                                <tr><td colspan="6" style="text-align:center">Loading faculty database...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- PANEL 3: SUBJECT MASTER -->
+                <div class="settings-panel" id="panel-subjects">
+                    <h2>Subject Master</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">Map subjects, credits, and faculty members for automated SGPA & result reports.</p>
+                    
+                    <form id="subjectForm" onsubmit="saveSubject(event)" style="border-bottom: 1px solid var(--glass-border); padding-bottom: 2rem; margin-bottom: 2rem;">
+                        <input type="hidden" id="edit_sub_id">
+                        <div class="form-grid-3">
+                            <div class="input-group">
+                                <label for="sub_academic_year">Academic Year</label>
+                                <select id="sub_academic_year" required>
+                                    <option value="2024-25">2024-25</option>
+                                    <option value="2025-26">2025-26</option>
+                                    <option value="2026-27" selected>2026-27</option>
+                                    <option value="2027-28">2027-28</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label for="sub_scheme">Scheme</label>
+                                <select id="sub_scheme" required>
+                                    <option value="2025 Scheme">2025 Scheme</option>
+                                    <option value="2022 Scheme" selected>2022 Scheme</option>
+                                    <option value="2021 Scheme">2021 Scheme</option>
+                                    <option value="2018 Scheme">2018 Scheme</option>
+                                    <option value="CBCS">CBCS</option>
+                                    <option value="Others">Others</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label for="sub_semester">Semester</label>
+                                <select id="sub_semester" required>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4" selected>4</option>
+                                    <option value="5">5</option>
+                                    <option value="6">6</option>
+                                    <option value="7">7</option>
+                                    <option value="8">8</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-grid-2">
+                            <div class="input-group">
+                                <label for="sub_dept">Department</label>
+                                <select id="sub_dept" required onchange="filterSubjectsTable()">
+                                    <option value="">Select Department</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label for="sub_code">Subject Code</label>
+                                <input type="text" id="sub_code" placeholder="e.g. BCS401" required>
+                            </div>
+                        </div>
+
+                        <div class="form-grid-3">
+                            <div class="input-group" style="grid-column: span 2;">
+                                <label for="sub_name">Subject Name</label>
+                                <input type="text" id="sub_name" placeholder="e.g. Analysis and Design of Algorithms" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="sub_credits">Credits</label>
+                                <input type="number" id="sub_credits" placeholder="e.g. 4" min="0" max="6" value="4" required>
+                            </div>
+                        </div>
+
+                        <div class="input-group">
+                            <label for="sub_faculty">Faculty Assigned</label>
+                            <select id="sub_faculty" required>
+                                <option value="">Select Faculty</option>
+                            </select>
+                        </div>
+                        <div style="display:flex; gap:1rem;">
+                            <button type="submit" id="sub_save_btn" class="btn" style="width: auto; padding: 0.8rem 2rem;">Save Subject Mapping</button>
+                            <button type="button" id="sub_cancel_btn" class="btn" style="width: auto; padding: 0.8rem 2rem; background:none; border:1px solid var(--glass-border); display:none;" onclick="resetSubjectForm()">Cancel</button>
+                        </div>
+                    </form>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3>Subject Mappings</h3>
+                        <div style="display:flex; gap:0.5rem;">
+                            <select id="filter_semester" style="padding:0.4rem 1rem; width:120px;" onchange="filterSubjectsTable()">
+                                <option value="">All Sems</option>
+                                <option value="1">Sem 1</option>
+                                <option value="2">Sem 2</option>
+                                <option value="3">Sem 3</option>
+                                <option value="4" selected>Sem 4</option>
+                                <option value="5">Sem 5</option>
+                                <option value="6">Sem 6</option>
+                                <option value="7">Sem 7</option>
+                                <option value="8">Sem 8</option>
+                            </select>
+                            <select id="filter_scheme" style="padding:0.4rem 1rem; width:150px;" onchange="filterSubjectsTable()">
+                                <option value="">All Schemes</option>
+                                <option value="2025 Scheme">2025 Scheme</option>
+                                <option value="2022 Scheme" selected>2022 Scheme</option>
+                                <option value="2021 Scheme">2021 Scheme</option>
+                                <option value="2018 Scheme">2018 Scheme</option>
+                                <option value="CBCS">CBCS</option>
+                                <option value="Others">Others</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="data-table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Sem</th>
+                                    <th>Sub Code</th>
+                                    <th>Subject Name</th>
+                                    <th>Credits</th>
+                                    <th>Faculty</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="subject-list-body">
+                                <tr><td colspan="6" style="text-align:center">Loading subject mappings...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- PANEL 4: REPORT DEFAULTS -->
+                <div class="settings-panel" id="panel-defaults">
+                    <h2>Report Defaults</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">Specify default options to pre-populate analyzer dropdowns before scraping.</p>
+                    <form id="defaultsForm" onsubmit="saveDefaults(event)">
+                        <div class="form-grid-2">
+                            <div class="input-group">
+                                <label for="def_dept">Default Department</label>
+                                <select id="def_dept" required>
+                                    <option value="">Select Department</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label for="def_academic_year">Default Academic Year</label>
+                                <select id="def_academic_year" required>
+                                    <option value="2024-25">2024-25</option>
+                                    <option value="2025-26">2025-26</option>
+                                    <option value="2026-27" selected>2026-27</option>
+                                    <option value="2027-28">2027-28</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-grid-3">
+                            <div class="input-group">
+                                <label for="def_exam">Default Examination</label>
+                                <select id="def_exam" required>
+                                    <option value="Odd Semester">Odd Semester</option>
+                                    <option value="Even Semester" selected>Even Semester</option>
+                                    <option value="Supplementary">Supplementary</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label for="def_semester">Default Semester</label>
+                                <select id="def_semester" required>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4" selected>4</option>
+                                    <option value="5">5</option>
+                                    <option value="6">6</option>
+                                    <option value="7">7</option>
+                                    <option value="8">8</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label for="def_scheme">Default Scheme</label>
+                                <select id="def_scheme" required>
+                                    <option value="2025 Scheme">2025 Scheme</option>
+                                    <option value="2022 Scheme" selected>2022 Scheme</option>
+                                    <option value="2021 Scheme">2021 Scheme</option>
+                                    <option value="2018 Scheme">2018 Scheme</option>
+                                    <option value="CBCS">CBCS</option>
+                                    <option value="Others">Others</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn" style="margin-top: 1rem;">Save Report Defaults</button>
+                    </form>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleTheme() {
+            document.body.classList.toggle('light-mode');
+            localStorage.setItem('theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
+        }
+        if(localStorage.getItem('theme') === 'light') document.body.classList.add('light-mode');
+
+        // Global states
+        let accreditationList = [];
+        let departments = [];
+        let faculty = [];
+        let subjects = [];
+        let activeTabName = 'profile';
+        let currentEditDeptId = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadProfile();
+            loadDepartments();
+            loadFaculty();
+            loadDefaults();
+        });
+
+        function switchPanel(index, name) {
+            activeTabName = name;
+            document.querySelectorAll('.settings-menu-item').forEach((item, i) => {
+                item.classList.toggle('active', i === index);
+            });
+            document.querySelectorAll('.settings-panel').forEach((panel, i) => {
+                panel.classList.toggle('active', i === index);
+            });
+            
+            // Context specific loads
+            if (name === 'subjects') {
+                filterSubjectsTable();
+            }
+        }
+
+        // Image Base64 convertor helper
+        function previewLogo(input, previewId) {
+            const preview = document.getElementById(previewId);
+            const file = input.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    preview.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+                    preview.dataset.base64 = e.target.result;
+                }
+                reader.readAsDataURL(file);
+            } else {
+                preview.innerHTML = `<span style="font-size:0.8rem; color:var(--text-secondary)">No Logo</span>`;
+                delete preview.dataset.base64;
+            }
+        }
+
+        // Tag management
+        function addAccreditation() {
+            const val = document.getElementById('accreditation_input').value.trim();
+            if (val && !accreditationList.includes(val)) {
+                accreditationList.push(val);
+                renderAccreditationTags();
+                document.getElementById('accreditation_input').value = '';
+            }
+        }
+
+        function removeAccreditation(tag) {
+            accreditationList = accreditationList.filter(t => t !== tag);
+            renderAccreditationTags();
+        }
+
+        function renderAccreditationTags() {
+            const container = document.getElementById('accreditation-tags');
+            container.innerHTML = accreditationList.map(tag => `
+                <span class="accreditation-tag">
+                    ${tag}
+                    <button type="button" onclick="removeAccreditation('${tag}')">&times;</button>
+                </span>
+            `).join('');
+        }
+
+        // API: Profile
+        async function loadProfile() {
+            try {
+                const res = await fetch('/api/settings/profile');
+                const data = await res.json();
+                if (data.college_name) {
+                    document.getElementById('college_name').value = data.college_name;
+                    document.getElementById('short_name').value = data.short_name || '';
+                    document.getElementById('principal_name').value = data.principal_name || '';
+                    document.getElementById('website').value = data.website || '';
+                    document.getElementById('address').value = data.address || '';
+                    document.getElementById('city').value = data.city || '';
+                    document.getElementById('state').value = data.state || '';
+                    document.getElementById('pincode').value = data.pincode || '';
+                    document.getElementById('email').value = data.email || '';
+                    document.getElementById('phone').value = data.phone || '';
+                    
+                    if (data.logo_url) {
+                        const preview = document.getElementById('college-logo-preview');
+                        preview.innerHTML = `<img src="${data.logo_url}" alt="Preview">`;
+                        preview.dataset.base64 = data.logo_url;
+                    }
+                    
+                    accreditationList = data.accreditations || [];
+                    renderAccreditationTags();
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function saveProfile(e) {
+            e.preventDefault();
+            const logo = document.getElementById('college-logo-preview').dataset.base64 || '';
+            const payload = {
+                college_name: document.getElementById('college_name').value,
+                short_name: document.getElementById('short_name').value,
+                principal_name: document.getElementById('principal_name').value,
+                website: document.getElementById('website').value,
+                address: document.getElementById('address').value,
+                city: document.getElementById('city').value,
+                state: document.getElementById('state').value,
+                pincode: document.getElementById('pincode').value,
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value,
+                logo_url: logo,
+                accreditations: accreditationList
+            };
+
+            const res = await fetch('/api/settings/profile', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) alert('Institution Profile Saved Successfully!');
+            else alert('Failed to save profile');
+        }
+
+        // API: Departments
+        async function loadDepartments() {
+            try {
+                const res = await fetch('/api/settings/departments');
+                departments = await res.json();
+                
+                // Render List
+                const body = document.getElementById('dept-list-body');
+                if (departments.length === 0) {
+                    body.innerHTML = `<tr><td colspan="6" style="text-align:center">No departments added yet.</td></tr>`;
+                } else {
+                    body.innerHTML = departments.map(d => `
+                        <tr>
+                            <td>
+                                ${d.logo_url ? `<img src="${d.logo_url}" style="width:30px; height:30px; object-fit:contain;">` : '-'}
+                            </td>
+                            <td style="font-weight:600; color:var(--accent-primary)">${d.code}</td>
+                            <td>${d.name}</td>
+                            <td>${d.hod_name}</td>
+                            <td>${d.coordinator_name || '-'}</td>
+                            <td>
+                                <button class="btn btn-sm" style="width:auto; display:inline-block; padding:0.25rem 0.75rem; font-size:0.75rem; background:var(--accent-primary); border-radius:8px; margin-right:0.5rem;" onclick="editDepartment('${d._id}')">Edit</button>
+                                <button class="delete-btn-sm" onclick="deleteDepartment('${d._id}')">Delete</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+
+                // Populate selects in faculty, subjects, defaults
+                const selects = ['fac_dept', 'sub_dept', 'def_dept'];
+                selects.forEach(id => {
+                    const sel = document.getElementById(id);
+                    const val = sel.value; // keep selected
+                    sel.innerHTML = '<option value="">Select Department</option>' + 
+                        departments.map(d => `<option value="${d.name}">${d.name} (${d.code})</option>`).join('');
+                    if (val) sel.value = val;
+                });
+
+            } catch (e) { console.error(e); }
+        }
+
+        async function saveDepartment(e) {
+            e.preventDefault();
+            const logo = document.getElementById('dept-logo-preview').dataset.base64 || '';
+            const payload = {
+                name: document.getElementById('dept_name').value,
+                code: document.getElementById('dept_code').value.toUpperCase(),
+                hod_name: document.getElementById('hod_name').value,
+                coordinator_name: document.getElementById('coord_name').value,
+                logo_url: logo
+            };
+
+            let url = '/api/settings/departments';
+            let method = 'POST';
+            if (currentEditDeptId) {
+                url = `/api/settings/departments?id=${currentEditDeptId}`;
+                method = 'PUT';
+            }
+
+            const res = await fetch(url, {
+                method: method,
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                cancelDeptEdit();
+                loadDepartments();
+            } else {
+                alert(currentEditDeptId ? 'Failed to update department' : 'Failed to add department');
+            }
+        }
+
+        function editDepartment(id) {
+            const dept = departments.find(d => d._id === id);
+            if (dept) {
+                currentEditDeptId = id;
+                document.getElementById('dept_name').value = dept.name;
+                document.getElementById('dept_code').value = dept.code;
+                document.getElementById('hod_name').value = dept.hod_name;
+                document.getElementById('coord_name').value = dept.coordinator_name || '';
+                
+                const preview = document.getElementById('dept-logo-preview');
+                if (dept.logo_url) {
+                    preview.innerHTML = `<img src="${dept.logo_url}" alt="Preview">`;
+                    preview.dataset.base64 = dept.logo_url;
+                } else {
+                    preview.innerHTML = `<span style="font-size:0.8rem; color:var(--text-secondary)">No Logo</span>`;
+                    delete preview.dataset.base64;
+                }
+                
+                document.getElementById('deptSubmitBtn').innerText = 'Save Department';
+                document.getElementById('deptCancelBtn').style.display = 'inline-block';
+                
+                document.getElementById('departmentForm').scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        function cancelDeptEdit() {
+            currentEditDeptId = null;
+            document.getElementById('departmentForm').reset();
+            document.getElementById('dept-logo-preview').innerHTML = `<span style="font-size:0.8rem; color:var(--text-secondary)">No Logo</span>`;
+            delete document.getElementById('dept-logo-preview').dataset.base64;
+            
+            document.getElementById('deptSubmitBtn').innerText = 'Add Department';
+            document.getElementById('deptCancelBtn').style.display = 'none';
+        }
+
+        async function deleteDepartment(id) {
+            if (!confirm('Are you sure you want to delete this department?')) return;
+            const res = await fetch(`/api/settings/departments?id=${id}`, { method: 'DELETE' });
+            if (res.ok) loadDepartments();
+            else alert('Failed to delete department');
+        }
+
+        // API: Faculty
+        async function loadFaculty() {
+            try {
+                const res = await fetch('/api/settings/faculty');
+                faculty = await res.json();
+
+                // Render List
+                const body = document.getElementById('faculty-list-body');
+                if (faculty.length === 0) {
+                    body.innerHTML = `<tr><td colspan="6" style="text-align:center">No faculty added yet.</td></tr>`;
+                } else {
+                    body.innerHTML = faculty.map(f => `
+                        <tr>
+                            <td style="font-weight:600; color:var(--text-primary)">${f.name}</td>
+                            <td>${f.designation} (${f.qualification})</td>
+                            <td>${f.department}</td>
+                            <td>${f.email}</td>
+                            <td>${f.phone || '-'}</td>
+                            <td>
+                                <button class="delete-btn-sm" onclick="deleteFaculty('${f._id}')">Delete</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+
+                // Populate subjects faculty select
+                const sel = document.getElementById('sub_faculty');
+                sel.innerHTML = '<option value="">Select Faculty</option>' + 
+                    faculty.map(f => `<option value="${f.name}">${f.name} (${f.department})</option>`).join('');
+
+            } catch (e) { console.error(e); }
+        }
+
+        async function saveFaculty(e) {
+            e.preventDefault();
+            const payload = {
+                name: document.getElementById('fac_name').value,
+                designation: document.getElementById('fac_designation').value,
+                qualification: document.getElementById('fac_qualification').value,
+                email: document.getElementById('fac_email').value,
+                phone: document.getElementById('fac_phone').value,
+                department: document.getElementById('fac_dept').value
+            };
+
+            const res = await fetch('/api/settings/faculty', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                document.getElementById('facultyForm').reset();
+                loadFaculty();
+            } else {
+                alert('Failed to add faculty');
+            }
+        }
+
+        async function deleteFaculty(id) {
+            if (!confirm('Are you sure you want to delete this faculty member?')) return;
+            const res = await fetch(`/api/settings/faculty?id=${id}`, { method: 'DELETE' });
+            if (res.ok) loadFaculty();
+            else alert('Failed to delete faculty');
+        }
+
+        // API: Subject mappings
+        async function filterSubjectsTable() {
+            const dept = document.getElementById('sub_dept').value;
+            const sem = document.getElementById('filter_semester').value;
+            const scheme = document.getElementById('filter_scheme').value;
+            const ay = document.getElementById('sub_academic_year').value;
+
+            let url = `/api/settings/subjects?academic_year=${ay}`;
+            if (dept) url += `&department=${encodeURIComponent(dept)}`;
+            if (sem) url += `&semester=${sem}`;
+            if (scheme) url += `&scheme=${encodeURIComponent(scheme)}`;
+
+            try {
+                const res = await fetch(url);
+                subjects = await res.json();
+
+                const body = document.getElementById('subject-list-body');
+                if (subjects.length === 0) {
+                    body.innerHTML = `<tr><td colspan="6" style="text-align:center">No subjects mapped for current filter criteria.</td></tr>`;
+                } else {
+                    body.innerHTML = subjects.map(s => `
+                        <tr>
+                            <td style="text-align:center; font-weight:600;">Sem ${s.semester}</td>
+                            <td style="font-weight:700; color:var(--accent-secondary)">${s.subject_code}</td>
+                            <td>${s.subject_name}</td>
+                            <td style="text-align:center">${s.credits}</td>
+                            <td>${s.faculty_name}</td>
+                            <td>
+                                <button class="edit-btn-sm" onclick="editSubject('${s._id}')">Edit</button>
+                                <button class="delete-btn-sm" onclick="deleteSubject('${s._id}')">Delete</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function saveSubject(e) {
+            e.preventDefault();
+            const editId = document.getElementById('edit_sub_id').value;
+            const payload = {
+                academic_year: document.getElementById('sub_academic_year').value,
+                scheme: document.getElementById('sub_scheme').value,
+                semester: parseInt(document.getElementById('sub_semester').value),
+                department: document.getElementById('sub_dept').value,
+                subject_code: document.getElementById('sub_code').value.toUpperCase().trim(),
+                subject_name: document.getElementById('sub_name').value.trim(),
+                credits: parseInt(document.getElementById('sub_credits').value),
+                faculty_name: document.getElementById('sub_faculty').value
+            };
+
+            let res;
+            if (editId) {
+                res = await fetch(`/api/settings/subjects?id=${editId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                res = await fetch('/api/settings/subjects', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            if (res.ok) {
+                resetSubjectForm();
+                filterSubjectsTable();
+            } else {
+                alert('Failed to save subject mapping');
+            }
+        }
+
+        function editSubject(id) {
+            const sub = subjects.find(s => s._id === id);
+            if (!sub) return;
+
+            document.getElementById('edit_sub_id').value = sub._id;
+            document.getElementById('sub_academic_year').value = sub.academic_year;
+            document.getElementById('sub_scheme').value = sub.scheme;
+            document.getElementById('sub_semester').value = sub.semester;
+            document.getElementById('sub_dept').value = sub.department;
+            document.getElementById('sub_code').value = sub.subject_code;
+            document.getElementById('sub_name').value = sub.subject_name;
+            document.getElementById('sub_credits').value = sub.credits;
+            document.getElementById('sub_faculty').value = sub.faculty_name;
+
+            document.getElementById('sub_save_btn').innerText = 'Update Subject';
+            document.getElementById('sub_cancel_btn').style.display = 'inline-flex';
+        }
+
+        function resetSubjectForm() {
+            document.getElementById('edit_sub_id').value = '';
+            document.getElementById('sub_code').value = '';
+            document.getElementById('sub_name').value = '';
+            document.getElementById('sub_credits').value = '4';
+            document.getElementById('sub_faculty').value = '';
+            
+            document.getElementById('sub_save_btn').innerText = 'Save Subject Mapping';
+            document.getElementById('sub_cancel_btn').style.display = 'none';
+        }
+
+        async function deleteSubject(id) {
+            if (!confirm('Are you sure you want to delete this subject mapping?')) return;
+            const res = await fetch(`/api/settings/subjects?id=${id}`, { method: 'DELETE' });
+            if (res.ok) filterSubjectsTable();
+            else alert('Failed to delete subject mapping');
+        }
+
+        // API: Defaults
+        async function loadDefaults() {
+            try {
+                const res = await fetch('/api/settings/defaults');
+                const data = await res.json();
+                if (data.department) {
+                    document.getElementById('def_dept').value = data.department;
+                    document.getElementById('def_academic_year').value = data.academic_year;
+                    document.getElementById('def_exam').value = data.examination;
+                    document.getElementById('def_semester').value = data.semester;
+                    document.getElementById('def_scheme').value = data.scheme;
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function saveDefaults(e) {
+            e.preventDefault();
+            const payload = {
+                department: document.getElementById('def_dept').value,
+                academic_year: document.getElementById('def_academic_year').value,
+                examination: document.getElementById('def_exam').value,
+                semester: document.getElementById('def_semester').value,
+                scheme: document.getElementById('def_scheme').value
+            };
+
+            const res = await fetch('/api/settings/defaults', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) alert('Report Defaults Saved Successfully!');
+            else alert('Failed to save defaults');
+        }
+    </script>
+</body>
+</html>

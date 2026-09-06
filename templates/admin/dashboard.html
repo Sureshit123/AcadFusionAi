@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard | AcadFusion AI</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .admin-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .admin-modal-content {
+            background: var(--bg-dark);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 2rem;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="admin-container">
+        <!-- Top Header -->
+        <div class="header" style="margin-bottom: 1.5rem;">
+            <a href="/" class="brand-header">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="AcadFusion AI" class="brand-logo">
+                <div class="brand-info">
+                    <span class="brand-name">AcadFusion AI</span>
+                    <span class="brand-tagline" style="font-size: 0.65rem;">Platform Administration & Governance</span>
+                </div>
+            </a>
+            <div class="header-gadgets-stacked">
+                <div class="gadget-row-top" style="gap: 0.5rem;">
+                    <a href="{{ url_for('main.hub') }}" class="hub-pill-link" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-secondary); padding: 0.35rem 0.8rem; border-radius: 99px; font-size: 0.75rem; font-weight: 600; text-decoration: none;">
+                        🏠 Hub
+                    </a>
+                    <a href="{{ url_for('analyzer.dashboard') }}" class="hub-pill-link" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-secondary); padding: 0.35rem 0.8rem; border-radius: 99px; font-size: 0.75rem; font-weight: 600; text-decoration: none;">
+                        📊 Result Analyser
+                    </a>
+                    <div class="user-info-badge">
+                        <div class="user-pill" style="color: var(--accent-primary);">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            <span>{{ session.get('user_name', 'Admin') }} (Admin)</span>
+                        </div>
+                        <a href="{{ url_for('auth.logout') }}" class="logout-link">Logout</a>
+                    </div>
+                </div>
+                <div class="gadget-row-bottom">
+                    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Light/Dark Mode">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Platform Overview Stat Cards -->
+        <div class="admin-stats-grid" id="statsGrid">
+            <div class="admin-stat-card">
+                <div class="admin-stat-icon">👥</div>
+                <div class="admin-stat-info">
+                    <div class="admin-stat-value" id="statTotalUsers">0</div>
+                    <div class="admin-stat-label">Total Registered Users</div>
+                </div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="admin-stat-icon">🟢</div>
+                <div class="admin-stat-info">
+                    <div class="admin-stat-value" id="statActiveUsers">0</div>
+                    <div class="admin-stat-label">Active Users</div>
+                </div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="admin-stat-icon">📊</div>
+                <div class="admin-stat-info">
+                    <div class="admin-stat-value" id="statTotalAnalyses">0</div>
+                    <div class="admin-stat-label">Total Analyses Performed</div>
+                </div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="admin-stat-icon">✅</div>
+                <div class="admin-stat-info">
+                    <div class="admin-stat-value" id="statSuccessfulAnalyses">0</div>
+                    <div class="admin-stat-label">Successful Analyses</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="admin-nav-tabs">
+            <button class="admin-tab-btn active" onclick="switchAdminTab('users')">👥 User Management</button>
+            <button class="admin-tab-btn" onclick="switchAdminTab('analyses')">📜 Platform Analysis History</button>
+            <button class="admin-tab-btn" onclick="switchAdminTab('reports')">📑 Authorised Generated Reports</button>
+        </div>
+
+        <!-- Tab 1: User Management -->
+        <div id="tab-users" class="admin-tab-content">
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; justify-content: space-between; align-items: center;">
+                <div style="display: flex; gap: 0.75rem; flex: 1; min-width: 280px;">
+                    <input type="text" id="userSearchInput" placeholder="🔍 Search users by name or email..." onkeyup="filterUsers()" style="padding: 0.6rem 1rem; font-size: 0.88rem; border-radius: 8px;">
+                    <select id="userStatusFilter" onchange="filterUsers()" style="padding: 0.6rem 1rem; font-size: 0.88rem; border-radius: 8px; max-width: 180px;">
+                        <option value="all">All Statuses</option>
+                        <option value="active">Active Only</option>
+                        <option value="suspended">Suspended Only</option>
+                    </select>
+                </div>
+                <button class="btn" onclick="loadUsers()" style="padding: 0.5rem 1rem; font-size: 0.85rem;">🔄 Refresh</button>
+            </div>
+
+            <div class="admin-table-container">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email / Username</th>
+                            <th>Role</th>
+                            <th>Creation Date</th>
+                            <th>Last Login</th>
+                            <th>Analyses</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody">
+                        <tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Loading registered users...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab 2: Platform Analysis History -->
+        <div id="tab-analyses" class="admin-tab-content" style="display: none;">
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; justify-content: space-between; align-items: center;">
+                <div style="flex: 1; min-width: 280px;">
+                    <input type="text" id="analysisSearchInput" placeholder="🔍 Search analyses by user, job ID, or department..." onkeyup="filterAnalyses()" style="padding: 0.6rem 1rem; font-size: 0.88rem; border-radius: 8px; width: 100%;">
+                </div>
+                <button class="btn" onclick="loadAnalyses()" style="padding: 0.5rem 1rem; font-size: 0.85rem;">🔄 Refresh</button>
+            </div>
+
+            <div class="admin-table-container">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Job ID</th>
+                            <th>User</th>
+                            <th>Date & Time</th>
+                            <th>Result Type</th>
+                            <th>Semester</th>
+                            <th>Department</th>
+                            <th>Status</th>
+                            <th>Downloads</th>
+                        </tr>
+                    </thead>
+                    <tbody id="analysesTableBody">
+                        <tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Loading platform analysis history...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab 3: Authorised Generated Reports -->
+        <div id="tab-reports" class="admin-tab-content" style="display: none;">
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; justify-content: space-between; align-items: center;">
+                <div style="flex: 1; min-width: 280px;">
+                    <input type="text" id="reportsSearchInput" placeholder="🔍 Search reports by user or department..." onkeyup="filterReports()" style="padding: 0.6rem 1rem; font-size: 0.88rem; border-radius: 8px; width: 100%;">
+                </div>
+                <button class="btn" onclick="loadReports()" style="padding: 0.5rem 1rem; font-size: 0.85rem;">🔄 Refresh</button>
+            </div>
+
+            <div class="admin-table-container">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Analysis Date</th>
+                            <th>Semester & Dept</th>
+                            <th>Result Type</th>
+                            <th>Students</th>
+                            <th>Available Authorised Reports</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reportsTableBody">
+                        <tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Loading generated reports...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Password Reset Modal -->
+    <div id="resetPasswordModal" class="admin-modal">
+        <div class="admin-modal-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-weight: 700; color: var(--text-primary);">🔑 Reset User Password</h3>
+                <button onclick="closeModal('resetPasswordModal')" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.5rem;">&times;</button>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;">
+                User: <strong id="resetUserEmail" style="color: var(--accent-secondary);"></strong>
+            </p>
+            <div id="resetErrorMsg" style="color: var(--error); font-size: 0.8rem; margin-bottom: 0.5rem; display: none;"></div>
+            <div id="resetSuccessMsg" style="color: var(--success); font-size: 0.8rem; margin-bottom: 0.5rem; display: none;"></div>
+            <form id="resetPasswordForm" onsubmit="submitPasswordReset(event)">
+                <input type="hidden" id="resetUserId">
+                <div class="input-group" style="margin-bottom: 1rem;">
+                    <label style="font-size: 0.8rem;">New Temporary Password</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="newPasswordInput" placeholder="Enter new password" required minlength="6" style="flex: 1; padding: 0.6rem;">
+                        <button type="button" class="btn" onclick="generateTempPassword()" style="padding: 0.6rem 1rem; font-size: 0.8rem; background: var(--glass-border);">Generate</button>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+                    <button type="button" class="btn" onclick="closeModal('resetPasswordModal')" style="background: transparent; border: 1px solid var(--glass-border); font-size: 0.85rem; padding: 0.5rem 1.25rem;">Cancel</button>
+                    <button type="submit" class="btn" style="font-size: 0.85rem; padding: 0.5rem 1.25rem;">Save New Password</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- User Details Modal -->
+    <div id="userDetailModal" class="admin-modal">
+        <div class="admin-modal-content" style="max-width: 800px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-weight: 700; color: var(--text-primary);">👤 User Detail & Activity</h3>
+                <button onclick="closeModal('userDetailModal')" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.5rem;">&times;</button>
+            </div>
+            <div id="userDetailContent" style="color: var(--text-primary); font-size: 0.9rem;">
+                Loading user profile...
+            </div>
+            <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
+                <button class="btn" onclick="closeModal('userDetailModal')" style="padding: 0.5rem 1.5rem; font-size: 0.85rem;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="developer-credit">
+        <div class="shine-text" style="font-size: 0.85rem;">
+            &copy; 2026 AcadFusion AI Administrative Suite | Platform Creator: Sureshit Sharma
+        </div>
+    </footer>
+
+    <script>
+        let allUsersData = [];
+        let allAnalysesData = [];
+        let allReportsData = [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            loadUsers();
+            loadAnalyses();
+            loadReports();
+        });
+
+        function toggleTheme() {
+            document.body.classList.toggle('light-mode');
+            localStorage.setItem('theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
+        }
+        if(localStorage.getItem('theme') === 'light') document.body.classList.add('light-mode');
+
+        function switchAdminTab(tabName) {
+            document.querySelectorAll('.admin-tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.admin-tab-content').forEach(c => c.style.display = 'none');
+            
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tabName}`).style.display = 'block';
+        }
+
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/admin/stats');
+                if(!res.ok) return;
+                const data = await res.json();
+                document.getElementById('statTotalUsers').innerText = data.total_users || 0;
+                document.getElementById('statActiveUsers').innerText = data.active_users || 0;
+                document.getElementById('statTotalAnalyses').innerText = data.total_analyses || 0;
+                document.getElementById('statSuccessfulAnalyses').innerText = data.successful_analyses || 0;
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadUsers() {
+            const tbody = document.getElementById('usersTableBody');
+            try {
+                const res = await fetch('/api/admin/users');
+                const data = await res.json();
+                allUsersData = data.users || [];
+                renderUsers(allUsersData);
+            } catch(e) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--error);">Failed to load users.</td></tr>`;
+            }
+        }
+
+        function renderUsers(users) {
+            const tbody = document.getElementById('usersTableBody');
+            if(!users || users.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-secondary); padding:2rem;">No registered users found.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = users.map(u => {
+                const created = u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A';
+                const lastLogin = u.last_login ? new Date(u.last_login).toLocaleString() : 'Never';
+                const statusClass = u.account_status === 'suspended' ? 'suspended' : 'active';
+                const roleClass = u.role === 'admin' ? 'admin' : 'user';
+
+                return `
+                    <tr>
+                        <td><strong>${escapeHtml(u.name || 'N/A')}</strong></td>
+                        <td>${escapeHtml(u.email || '')}</td>
+                        <td><span class="status-badge ${roleClass}">${u.role || 'user'}</span></td>
+                        <td>${created}</td>
+                        <td>${lastLogin}</td>
+                        <td><strong>${u.analyses_count || 0}</strong></td>
+                        <td><span class="status-badge ${statusClass}">${u.account_status || 'active'}</span></td>
+                        <td>
+                            <button class="admin-action-btn" onclick="openUserDetail('${u._id}')">👁️ Details</button>
+                            <button class="admin-action-btn" onclick="openResetPassword('${u._id}', '${escapeHtml(u.email)}')">🔑 Reset PW</button>
+                            ${u.account_status === 'suspended' ? 
+                                `<button class="admin-action-btn" onclick="toggleUserStatus('${u._id}', 'active')" style="color:#10b981;">🟢 Activate</button>` : 
+                                `<button class="admin-action-btn" onclick="toggleUserStatus('${u._id}', 'suspended')" style="color:#ef4444;">⛔ Suspend</button>`
+                            }
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function filterUsers() {
+            const q = document.getElementById('userSearchInput').value.toLowerCase().trim();
+            const status = document.getElementById('userStatusFilter').value;
+
+            const filtered = allUsersData.filter(u => {
+                const matchesQ = !q || (u.name && u.name.toLowerCase().includes(q)) || (u.email && u.email.toLowerCase().includes(q));
+                const matchesStatus = status === 'all' || u.account_status === status;
+                return matchesQ && matchesStatus;
+            });
+            renderUsers(filtered);
+        }
+
+        async function loadAnalyses() {
+            const tbody = document.getElementById('analysesTableBody');
+            try {
+                const res = await fetch('/api/admin/analyses');
+                const data = await res.json();
+                allAnalysesData = data.analyses || [];
+                renderAnalyses(allAnalysesData);
+            } catch(e) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--error);">Failed to load platform history.</td></tr>`;
+            }
+        }
+
+        function renderAnalyses(analyses) {
+            const tbody = document.getElementById('analysesTableBody');
+            if(!analyses || analyses.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-secondary); padding:2rem;">No platform analyses found.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = analyses.map(a => {
+                const ts = a.timestamp ? new Date(a.timestamp).toLocaleString() : 'N/A';
+                const statusBadge = a.status === 'completed' ? '<span class="status-badge active">Completed</span>' : '<span class="status-badge suspended">Failed</span>';
+                
+                return `
+                    <tr>
+                        <td><code>${a.job_id ? a.job_id.substring(0, 8) : 'N/A'}</code></td>
+                        <td><strong>${escapeHtml(a.user_name || 'User')}</strong><br><small style="color:var(--text-secondary);">${escapeHtml(a.user_email || '')}</small></td>
+                        <td>${ts}</td>
+                        <td><span style="text-transform:capitalize;">${a.result_type || 'regular'}</span></td>
+                        <td>Sem ${a.semester || 'N/A'}</td>
+                        <td>${escapeHtml(a.department || 'N/A')}</td>
+                        <td>${statusBadge}</td>
+                        <td>
+                            <a href="/download/${a.job_id}" class="admin-action-btn" target="_blank" style="text-decoration:none;">📊 Excel</a>
+                            <a href="/download_pdf/${a.job_id}" class="admin-action-btn" target="_blank" style="text-decoration:none;">📄 PDF</a>
+                            <a href="/download_csv/${a.job_id}" class="admin-action-btn" target="_blank" style="text-decoration:none;">📑 CSV</a>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function filterAnalyses() {
+            const q = document.getElementById('analysisSearchInput').value.toLowerCase().trim();
+            const filtered = allAnalysesData.filter(a => {
+                return !q || (a.user_name && a.user_name.toLowerCase().includes(q)) ||
+                       (a.user_email && a.user_email.toLowerCase().includes(q)) ||
+                       (a.job_id && a.job_id.toLowerCase().includes(q)) ||
+                       (a.department && a.department.toLowerCase().includes(q));
+            });
+            renderAnalyses(filtered);
+        }
+
+        async function loadReports() {
+            const tbody = document.getElementById('reportsTableBody');
+            try {
+                const res = await fetch('/api/admin/reports');
+                const data = await res.json();
+                allReportsData = data.reports || [];
+                renderReports(allReportsData);
+            } catch(e) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--error);">Failed to load reports.</td></tr>`;
+            }
+        }
+
+        function renderReports(reports) {
+            const tbody = document.getElementById('reportsTableBody');
+            if(!reports || reports.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-secondary); padding:2rem;">No generated reports found.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = reports.map(r => {
+                const ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : 'N/A';
+
+                return `
+                    <tr>
+                        <td><strong>${escapeHtml(r.user_name || 'User')}</strong><br><small style="color:var(--text-secondary);">${escapeHtml(r.user_email || '')}</small></td>
+                        <td>${ts}</td>
+                        <td>Sem ${r.semester || 'N/A'} - ${escapeHtml(r.department || 'N/A')}</td>
+                        <td><span style="text-transform:capitalize;">${r.result_type || 'regular'}</span></td>
+                        <td><strong>${r.student_count || 0}</strong> students</td>
+                        <td>
+                            <a href="${r.excel_url}" class="admin-action-btn" target="_blank" style="background:#16a34a; text-decoration:none; color:white;">📊 Excel Report</a>
+                            <a href="${r.pdf_url}" class="admin-action-btn" target="_blank" style="background:#7c3aed; text-decoration:none; color:white;">📄 PDF Report</a>
+                            <a href="${r.csv_url}" class="admin-action-btn" target="_blank" style="background:#0284c7; text-decoration:none; color:white;">📑 CSV File</a>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function filterReports() {
+            const q = document.getElementById('reportsSearchInput').value.toLowerCase().trim();
+            const filtered = allReportsData.filter(r => {
+                return !q || (r.user_name && r.user_name.toLowerCase().includes(q)) ||
+                       (r.user_email && r.user_email.toLowerCase().includes(q)) ||
+                       (r.department && r.department.toLowerCase().includes(q));
+            });
+            renderReports(filtered);
+        }
+
+        function openResetPassword(userId, email) {
+            document.getElementById('resetUserId').value = userId;
+            document.getElementById('resetUserEmail').innerText = email;
+            document.getElementById('newPasswordInput').value = '';
+            document.getElementById('resetErrorMsg').style.display = 'none';
+            document.getElementById('resetSuccessMsg').style.display = 'none';
+            document.getElementById('resetPasswordModal').style.display = 'flex';
+        }
+
+        function generateTempPassword() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$';
+            let pw = '';
+            for(let i=0; i<10; i++) pw += chars.charAt(Math.floor(Math.random() * chars.length));
+            document.getElementById('newPasswordInput').value = pw;
+        }
+
+        async function submitPasswordReset(e) {
+            e.preventDefault();
+            const userId = document.getElementById('resetUserId').value;
+            const newPassword = document.getElementById('newPasswordInput').value;
+
+            const errDiv = document.getElementById('resetErrorMsg');
+            const succDiv = document.getElementById('resetSuccessMsg');
+            errDiv.style.display = 'none';
+            succDiv.style.display = 'none';
+
+            try {
+                const res = await fetch(`/api/admin/users/${userId}/reset_password`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ new_password: newPassword })
+                });
+                const data = await res.json();
+
+                if(res.ok && data.success) {
+                    succDiv.innerText = 'Password reset successfully! Give this temporary password to the user.';
+                    succDiv.style.display = 'block';
+                    setTimeout(() => closeModal('resetPasswordModal'), 2500);
+                } else {
+                    errDiv.innerText = data.error || 'Failed to reset password.';
+                    errDiv.style.display = 'block';
+                }
+            } catch(e) {
+                errDiv.innerText = 'Network error resetting password.';
+                errDiv.style.display = 'block';
+            }
+        }
+
+        async function toggleUserStatus(userId, newStatus) {
+            if(!confirm(`Are you sure you want to change account status to ${newStatus}?`)) return;
+
+            try {
+                const res = await fetch(`/api/admin/users/${userId}/status`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ status: newStatus })
+                });
+                const data = await res.json();
+
+                if(res.ok && data.success) {
+                    loadUsers();
+                    loadStats();
+                } else {
+                    alert(data.error || 'Failed to update user status.');
+                }
+            } catch(e) { alert('Error communicating with server.'); }
+        }
+
+        async function openUserDetail(userId) {
+            document.getElementById('userDetailModal').style.display = 'flex';
+            const container = document.getElementById('userDetailContent');
+            container.innerHTML = `<p style="color:var(--text-secondary);">Loading user details...</p>`;
+
+            try {
+                const res = await fetch(`/api/admin/users/${userId}`);
+                const data = await res.json();
+                if(!res.ok) { container.innerHTML = `<p style="color:var(--error);">${data.error}</p>`; return; }
+
+                const u = data.user;
+                const analyses = data.analyses || [];
+
+                container.innerHTML = `
+                    <div style="background:rgba(255,255,255,0.03); padding:1rem; border-radius:10px; margin-bottom:1rem; display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                        <div><strong>Name:</strong> ${escapeHtml(u.name)}</div>
+                        <div><strong>Email:</strong> ${escapeHtml(u.email)}</div>
+                        <div><strong>Role:</strong> <span class="status-badge ${u.role === 'admin' ? 'admin' : 'user'}">${u.role}</span></div>
+                        <div><strong>Account Status:</strong> <span class="status-badge ${u.account_status === 'suspended' ? 'suspended' : 'active'}">${u.account_status}</span></div>
+                        <div><strong>Registered On:</strong> ${u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A'}</div>
+                        <div><strong>Last Login:</strong> ${u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</div>
+                    </div>
+                    <h4 style="margin-bottom:0.5rem;">User Analysis History (${analyses.length})</h4>
+                    <div style="max-height:250px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:8px; padding:0.5rem;">
+                        ${analyses.length === 0 ? '<p style="color:var(--text-secondary); font-size:0.85rem;">No analyses performed yet.</p>' : 
+                            `<table class="admin-table" style="font-size:0.8rem;">
+                                <thead><tr><th>Job ID</th><th>Date</th><th>Type</th><th>Semester</th><th>Action</th></tr></thead>
+                                <tbody>
+                                    ${analyses.map(a => `
+                                        <tr>
+                                            <td><code>${a.job_id.substring(0,8)}</code></td>
+                                            <td>${new Date(a.timestamp).toLocaleDateString()}</td>
+                                            <td>${a.result_type || 'regular'}</td>
+                                            <td>Sem ${a.semester || 'N/A'}</td>
+                                            <td><a href="/download/${a.job_id}" class="admin-action-btn" target="_blank">Download Excel</a></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>`
+                        }
+                    </div>
+                `;
+            } catch(e) { container.innerHTML = `<p style="color:var(--error);">Failed to load user details.</p>`; }
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/[&<>"']/g, function(m) {
+                return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'}[m];
+            });
+        }
+    </script>
+</body>
+</html>

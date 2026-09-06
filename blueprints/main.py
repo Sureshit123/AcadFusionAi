@@ -24,10 +24,8 @@ def history():
 def get_all_history():
     if 'user_id' not in session: return jsonify({'error': 'Unauthorized'}), 401
     user_id = session['user_id']
-    
     results = db_instance.get_user_analysis_history(user_id)
     timetables = db_instance.get_user_timetable_history(user_id)
-    
     return jsonify({
         'results': results,
         'timetables': timetables

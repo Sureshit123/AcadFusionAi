@@ -1,10 +1,20 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
 env/
+venv/
+.venv/
 bin/
+
+# Build / Dist
 build/
 develop-eggs/
 dist/
@@ -15,13 +25,28 @@ lib64/
 parts/
 sdist/
 var/
-*.egg-info/
-.installed.cfg
-*.egg
+
+# Environment & Secrets (NEVER commit these)
 .env
+.env.local
+.env.production
+*.env
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project-Specific Sensitive / Generated Files
 last_results_dump.json
 latest_result.html
 my_class_usns.txt
-.vscode/
-.idea/
 *.xlsx
+*.pdf
+*.csv
+scratch/
+
+# OS
+.DS_Store
+Thumbs.db

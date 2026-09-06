@@ -49,20 +49,37 @@
             <p>Generate conflict-free academic schedules based on credit hours, lab batches, and global teacher availability.</p>
         </a>
 
+        <a href="{{ url_for('feedback.index') }}" class="card" style="flex: 1; min-width: 250px; max-width: 300px;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">⭐</div>
+            <h2>Teacher Feedback</h2>
+            <p>Submit anonymous or identified student feedback for faculty. Powered by real-time Subject Mapping data.</p>
+        </a>
+
+        <a href="{{ url_for('feedback.admin_dashboard') }}" class="card" style="flex: 1; min-width: 250px; max-width: 300px;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">📈</div>
+            <h2>Feedback Analytics</h2>
+            <p>Visualize teacher ratings, department breakdowns, top performers, and export PDF/Excel/CSV reports.</p>
+        </a>
+
+        <a href="{{ url_for('settings.index') }}" class="card" style="flex: 1; min-width: 250px; max-width: 300px;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">⚙️</div>
+            <h2>Institution Config</h2>
+            <p>Configure college profile, departments, faculty rosters, subject credits, and automatic report headers.</p>
+        </a>
+
         <a href="{{ url_for('main.history') }}" class="card" style="flex: 1; min-width: 250px; max-width: 300px;">
             <div style="font-size: 3rem; margin-bottom: 1rem;">📜</div>
             <h2>System History</h2>
             <p>Access your past result analysis reports and generated timetables in a centralized and organized dashboard.</p>
         </a>
 
-        <div class="card disabled-card" style="flex: 1; min-width: 250px; max-width: 300px;">
-            <div style="font-size: 3rem; margin-bottom: 1rem;">🚀</div>
-            <h2>
-                Timetable Optimizer
-                <span class="future-badge">Comming Soon</span>
-            </h2>
-            <p>Upload raw drafts or structured text lists to automatically resolve conflicts and remove idle gaps using AI.</p>
-        </div>
+        {% if session.get('user_role') == 'admin' or session.get('user_id') == 'admin_super_user' %}
+        <a href="{{ url_for('admin.dashboard') }}" class="card" style="flex: 1; min-width: 250px; max-width: 300px; border-color: var(--accent-primary); background: linear-gradient(135deg, rgba(124, 58, 237, 0.15), rgba(6, 182, 212, 0.05));">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">🛡️</div>
+            <h2>Admin Dashboard</h2>
+            <p>Platform governance, statistics, registered user management, security reset, and platform-wide report access.</p>
+        </a>
+        {% endif %}
     </div>
 
     <footer class="developer-credit">

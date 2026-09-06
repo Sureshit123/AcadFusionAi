@@ -7,6 +7,7 @@
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(20px); }
@@ -19,11 +20,37 @@
             50% { transform: translateX(8px); }
             75% { transform: translateX(-4px); }
         }
+
+        .modal-tab.active {
+            background: var(--accent-primary) !important;
+            color: white !important;
+            box-shadow: 0 2px 8px var(--accent-glow);
+        }
+        
+        .metric-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--glass-border);
+            padding: 1rem;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent-secondary);
+            margin-top: 0.25rem;
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
     </style>
 </head>
 <body>
 
-    <div class="dashboard-container">
+    <div class="dashboard-container analyzer-dashboard-container">
         <div class="header">
             <a href="/" class="brand-header">
                 <img src="{{ url_for('static', filename='img/logo.png') }}" alt="AcadFusion AI" class="brand-logo">
@@ -34,9 +61,17 @@
             </a>
             <div class="header-gadgets-stacked">
                 <div class="gadget-row-top">
+                    {% if session.get('user_role') == 'admin' or session.get('user_id') == 'admin_super_user' %}
+                    <a href="{{ url_for('admin.dashboard') }}" class="admin-pill-link" style="background: rgba(124,58,237,0.2); border: 1px solid var(--accent-primary); color: var(--text-primary); padding: 0.35rem 0.8rem; border-radius: 99px; font-size: 0.75rem; font-weight: 700; text-decoration: none; transition: all 0.2s ease;">
+                        🛡️ Admin Panel
+                    </a>
+                    {% endif %}
+                    <a href="{{ url_for('main.hub') }}" class="hub-pill-link" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-secondary); padding: 0.35rem 0.8rem; border-radius: 99px; font-size: 0.75rem; font-weight: 600; text-decoration: none;">
+                        🏠 Hub
+                    </a>
                     <div class="user-info-badge">
                         <div class="user-pill">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                             <span>{{ session.get('user_name', 'Faculty') }}</span>
                         </div>
                         <a href="{{ url_for('auth.logout') }}" class="logout-link">Logout</a>
@@ -58,83 +93,309 @@
             </div>
         </div>
 
-        <div class="tabs">
-            <div class="tab active" onclick="switchTab('range')">Sequence Mode</div>
-            <div class="tab" onclick="switchTab('bulk')">Bulk Upload File</div>
+        <!-- Section 1: Result Type Selection -->
+        <div class="result-type-card" style="background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); padding: 0.75rem 1.25rem; border-radius: 14px; margin-bottom: 0.85rem;">
+            <h3 style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--text-primary); text-align: center; font-weight: 600;">
+                🎯 Select Result Type
+            </h3>
+            <div class="result-type-options" style="display: flex; flex-direction: row; justify-content: center; align-items: center; gap: 1.25rem; flex-wrap: nowrap; width: 100%;">
+                <label class="result-type-pill" style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; padding: 0.45rem 1rem; border-radius: 8px; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); transition: all 0.2s ease;">
+                    <input type="radio" name="result_type" value="regular" checked onchange="updateResultTypeUI()" style="accent-color: var(--accent-primary); width: 1rem; height: 1rem; cursor: pointer;">
+                    <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">Regular</span>
+                </label>
+                <label class="result-type-pill" style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; padding: 0.45rem 1rem; border-radius: 8px; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); transition: all 0.2s ease;">
+                    <input type="radio" name="result_type" value="reeval" onchange="updateResultTypeUI()" style="accent-color: var(--accent-primary); width: 1rem; height: 1rem; cursor: pointer;">
+                    <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">Re-evaluation</span>
+                </label>
+                <label class="result-type-pill" style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; padding: 0.45rem 1rem; border-radius: 8px; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); transition: all 0.2s ease;">
+                    <input type="radio" name="result_type" value="makeup" onchange="updateResultTypeUI()" style="accent-color: var(--accent-primary); width: 1rem; height: 1rem; cursor: pointer;">
+                    <span style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">Make-up</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Section 2: Report Settings Dropdowns -->
+        <div class="report-parameters-card" style="background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); padding: 1rem 1.25rem; border-radius: 14px; margin-bottom: 0.85rem;">
+            <h3 style="font-size: 0.9rem; margin-bottom: 0.6rem; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
+                📋 Report Configuration Settings
+            </h3>
+            <div class="report-config-row-top">
+                <div class="input-group">
+                    <label for="report_dept" style="font-size: 0.75rem;">Department</label>
+                    <select id="report_dept" name="department" required style="padding: 0.45rem 0.6rem; font-size: 0.85rem; height: 38px;">
+                        <option value="">Select Department</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="report_ay" style="font-size: 0.75rem;">Academic Year</label>
+                    <select id="report_ay" name="academic_year" required style="padding: 0.45rem 0.6rem; font-size: 0.85rem; height: 38px;">
+                        <option value="2024-25">2024-25</option>
+                        <option value="2025-26">2025-26</option>
+                        <option value="2026-27" selected>2026-27</option>
+                        <option value="2027-28">2027-28</option>
+                    </select>
+                </div>
+            </div>
+            <div class="report-config-row-mid">
+                <div class="input-group">
+                    <label for="report_exam" style="font-size: 0.75rem;">Examination</label>
+                    <select id="report_exam" name="examination" required style="padding: 0.45rem 0.6rem; font-size: 0.85rem; height: 38px;">
+                        <option value="Odd Semester">Odd Semester</option>
+                        <option value="Even Semester" selected>Even Semester</option>
+                        <option value="Supplementary">Supplementary</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="report_sem" style="font-size: 0.75rem;">Semester</label>
+                    <select id="report_sem" name="semester" required style="padding: 0.45rem 0.6rem; font-size: 0.85rem; height: 38px;">
+                        <option value="1">Semester 1</option>
+                        <option value="2">Semester 2</option>
+                        <option value="3">Semester 3</option>
+                        <option value="4" selected>Semester 4</option>
+                        <option value="5">Semester 5</option>
+                        <option value="6">Semester 6</option>
+                        <option value="7">Semester 7</option>
+                        <option value="8">Semester 8</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="report_scheme" style="font-size: 0.75rem;">Scheme</label>
+                    <select id="report_scheme" name="scheme" required style="padding: 0.45rem 0.6rem; font-size: 0.85rem; height: 38px;">
+                        <option value="2025 Scheme">2025 Scheme</option>
+                        <option value="2022 Scheme" selected>2022 Scheme</option>
+                        <option value="2021 Scheme">2021 Scheme</option>
+                        <option value="2018 Scheme">2018 Scheme</option>
+                        <option value="CBCS">CBCS</option>
+                        <option value="Others">Others</option>
+                    </select>
+                </div>
+            </div>
+            <div class="input-group" style="margin-top: 0.4rem;">
+                <label for="vtu_result_link" id="vtu_link_label" style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">
+                    Regular VTU Result Link
+                </label>
+                <input type="url" id="vtu_result_link" name="vtu_result_link" placeholder="Paste VTU Result Link Here" style="padding: 0.45rem 0.65rem; font-size: 0.85rem; border-radius: 8px; width: 100%; height: 38px;">
+            </div>
+        </div>
+
+        <div class="tabs" style="margin-bottom: 0.75rem;">
+            <div class="tab active" onclick="switchTab('range')" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Sequence Mode</div>
+            <div class="tab" onclick="switchTab('bulk')" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Bulk Upload File</div>
         </div>
 
         <div id="range-tab" class="tab-content active">
-            <form id="rangeForm">
-                <div class="input-group">
-                    <label for="start_usn">Starting USN</label>
-                    <input type="text" id="start_usn" name="start_usn" placeholder="e.g. 2BL23IS001" required pattern="[1-4][a-zA-Z]{2}\d{2}[a-zA-Z]{2}\d{3}">
+            <form id="rangeForm" class="sequence-mode-form">
+                <div class="input-group input-group-usn">
+                    <label for="start_usn" style="font-size: 0.75rem;">Starting USN</label>
+                    <input type="text" id="start_usn" name="start_usn" placeholder="e.g. 2BL23IS001" required pattern="[1-4][a-zA-Z]{2}\d{2}[a-zA-Z]{2}\d{3}" style="padding: 0.45rem 0.65rem; font-size: 0.85rem; height: 38px;">
                 </div>
-                <div class="input-group">
-                    <label for="count">Number of Students</label>
-                    <input type="number" id="count" name="count" min="1" max="500" value="10" required>
+                <div class="input-group input-group-count">
+                    <label for="count" style="font-size: 0.75rem;">Number of Students</label>
+                    <input type="number" id="count" name="count" min="1" max="500" value="10" required style="padding: 0.45rem 0.65rem; font-size: 0.85rem; height: 38px;">
                 </div>
-                <button type="submit" class="btn" id="startBtnRange">Start Analysis</button>
+                <button type="submit" class="btn btn-submit-sequence" id="startBtnRange" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Start Analysis</button>
             </form>
         </div>
 
         <div id="bulk-tab" class="tab-content">
-            <form id="bulkForm">
-                <div class="input-group">
-                    <label for="file">Upload Excel / CSV / TXT (USNs in 1st Column)</label>
-                    <input type="file" id="file" name="file" accept=".csv,.txt,.xlsx,.xls" required>
+            <form id="bulkForm" class="bulk-mode-form">
+                <div class="input-group input-group-file">
+                    <label for="file" style="font-size: 0.75rem;">Upload Excel / CSV / TXT (USNs in 1st Column)</label>
+                    <input type="file" id="file" name="file" accept=".csv,.txt,.xlsx,.xls" required style="padding: 0.4rem; font-size: 0.8rem; height: 38px;">
                 </div>
-                <button type="submit" class="btn" id="startBtnBulk">Process File</button>
+                <button type="submit" class="btn btn-submit-bulk" id="startBtnBulk" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Process File</button>
             </form>
         </div>
 
-        <div id="progressArea">
-            <div class="progress-header">
+        <div id="progressArea" style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid var(--glass-border);">
+            <div class="progress-header" style="font-size: 0.8rem; margin-bottom: 0.4rem;">
                 <span>Scraping Progress</span>
                 <span id="progressText">0 / 0</span>
             </div>
-            <div class="progress-bar-container">
+            <div class="progress-bar-container" style="height: 8px; margin-bottom: 0.4rem;">
                 <div class="progress-bar" id="progressBar"></div>
             </div>
-            <div id="currentStatus">Starting engine...</div>
+            <div id="currentStatus" style="font-size: 0.75rem; color: var(--text-secondary);">Starting engine...</div>
             
-            <div class="action-buttons-group" style="display: flex; gap: 1rem; margin-top: 1.5rem;">
-                <a id="downloadBtn" class="btn" href="#" style="flex: 2; display: none;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Download Excel Report
-                </a>
-                <button id="viewResultsBtn" class="btn" onclick="openResultsPreview()" style="flex: 1; background: var(--accent-secondary); display: none;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    View Live
+            <div class="action-buttons-group" style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem;">
+                <div style="display: flex; gap: 0.5rem; width: 100%;">
+                    <a id="downloadBtn" class="btn" href="#" style="flex: 1; display: none; background: #16a34a; padding: 0.5rem; font-size: 0.8rem;">
+                        📊 Excel Report
+                    </a>
+                    <a id="downloadPdfBtn" class="btn" href="#" style="flex: 1; display: none; background: #7c3aed; padding: 0.5rem; font-size: 0.8rem;">
+                        📄 PDF Report
+                    </a>
+                    <a id="downloadCsvBtn" class="btn" href="#" style="flex: 1; display: none; background: #0284c7; padding: 0.5rem; font-size: 0.8rem;">
+                        📑 CSV Flat
+                    </a>
+                </div>
+                <button id="viewResultsBtn" class="btn" onclick="openResultsPreview()" style="width: 100%; background: var(--accent-secondary); display: none; padding: 0.5rem; font-size: 0.85rem;">
+                    👁️ View Live Dashboard
                 </button>
             </div>
         </div>
 
     </div>
 
-    <div id="resultsModal" class="modal" style="display: none; padding: 2rem;">
-        <div class="modal-content" style="max-width: 1000px; width: 95%; height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3>Live Result Preview</h3>
-                <button onclick="document.getElementById('resultsModal').style.display='none'" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size: 1.5rem;">&times;</button>
+    <!-- Enhanced Dual-Tab Results Modal -->
+    <div id="resultsModal" class="modal" style="display: none; padding: 1.5rem;">
+        <div class="modal-content" style="max-width: 1100px; width: 95%; height: 92vh; overflow: hidden; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <h3 id="modal-title-text" style="font-weight:700;">Live Result Analytics Dashboard</h3>
+                <button onclick="document.getElementById('resultsModal').style.display='none'" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size: 1.8rem; line-height:1;">&times;</button>
             </div>
-            <div id="resultsTableContainer" style="flex: 1; overflow: auto; background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid var(--glass-border);">
-                <table class="preview-table" id="previewTable">
-                    <thead>
-                        <tr>
-                            <th>USN</th>
-                            <th>Student Name</th>
-                            <th>Total Marks</th>
-                            <th>Percentage</th>
-                            <th>Result</th>
-                        </tr>
-                    </thead>
-                    <tbody id="previewBody">
-                        <!-- Content via JS -->
-                    </tbody>
-                </table>
+            
+            <div class="modal-tabs" style="display:flex; gap:0.5rem; margin-bottom:1rem; background:rgba(0,0,0,0.2); padding:0.3rem; border-radius:10px;">
+                <div class="modal-tab active" id="modal-tab-list" onclick="switchModalTab('list')" style="flex:1; text-align:center; padding:0.6rem; border-radius:8px; cursor:pointer; font-weight:600; font-size:0.85rem; transition:all 0.3s; color:var(--text-secondary);">📝 Student List & Overall Summary</div>
+                <div class="modal-tab" id="modal-tab-charts" onclick="switchModalTab('charts')" style="flex:1; text-align:center; padding:0.6rem; border-radius:8px; cursor:pointer; font-weight:600; font-size:0.85rem; transition:all 0.3s; color:var(--text-secondary);">📊 Visual Analytics Charts</div>
             </div>
-            <div style="margin-top: 1rem; display: flex; justify-content: flex-end;">
-                <button class="btn" style="padding: 0.5rem 1.5rem;" onclick="document.getElementById('resultsModal').style.display='none'">Close Preview</button>
+
+            <!-- TAB 1: List and summary -->
+            <div id="modal-list-container" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:1.5rem;">
+                
+                <!-- Metrics summary section -->
+                <div>
+                    <h4 style="font-size:0.9rem; margin-bottom:0.75rem; color:var(--text-primary);">Overall Result Summary</h4>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:0.75rem;">
+                        <div class="metric-card">
+                            <div class="metric-label">Total Students</div>
+                            <div class="metric-value" id="stat-total">0</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Appeared</div>
+                            <div class="metric-value" id="stat-appeared">0</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Passed</div>
+                            <div class="metric-value" id="stat-passed" style="color:var(--success)">0</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Failed</div>
+                            <div class="metric-value" id="stat-failed" style="color:var(--error)">0</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Pass Percentage</div>
+                            <div class="metric-value" id="stat-pass-per">0%</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Average SGPA</div>
+                            <div class="metric-value" id="stat-avg-sgpa">0.0</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Highest SGPA</div>
+                            <div class="metric-value" id="stat-high-sgpa">0.0</div>
+                        </div>
+                    </div>
+                    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.75rem; margin-top:0.75rem;">
+                        <div class="metric-card">
+                            <div class="metric-label">Distinction Class</div>
+                            <div class="metric-value" id="stat-dist">0</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">First Class</div>
+                            <div class="metric-value" id="stat-first">0</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Second Class</div>
+                            <div class="metric-value" id="stat-second">0</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Fail Class</div>
+                            <div class="metric-value" id="stat-fail-class">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Table -->
+                <div style="flex:1;">
+                    <h4 style="font-size:0.9rem; margin-bottom:0.75rem; color:var(--text-primary);">Student Roster & Semester SGPAs</h4>
+                    <div style="overflow:auto; background:rgba(0,0,0,0.2); border-radius:12px; border:1px solid var(--glass-border); max-height: 400px;">
+                        <table class="preview-table" id="previewTable" style="margin-bottom:0;">
+                            <thead>
+                                <tr>
+                                    <th>USN</th>
+                                    <th>Student Name</th>
+                                    <th>Total Marks</th>
+                                    <th>Percentage</th>
+                                    <th>SGPA</th>
+                                    <th>Result</th>
+                                </tr>
+                            </thead>
+                            <tbody id="previewBody">
+                                <!-- Content via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Visual Analytics Dashboard -->
+            <div id="modal-charts-container" style="display:none; flex:1; overflow-y:auto; padding-right:0.25rem;">
+                <div class="charts-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:1.5rem;">
+                    
+                    <!-- 11 Canvas elements -->
+                    <div class="metric-card" style="min-height:240px; display:flex; flex-direction:column;">
+                        <span class="metric-label" style="font-weight:600; font-size:0.85rem;">1. Overall Pass vs Fail</span>
+                        <div style="flex:1; position:relative; min-height:180px;"><canvas id="chart-passfail"></canvas></div>
+                    </div>
+                    
+                    <div class="metric-card" style="min-height:240px; display:flex; flex-direction:column;">
+                        <span class="metric-label" style="font-weight:600; font-size:0.85rem;">2. Grade Distribution</span>
+                        <div style="flex:1; position:relative; min-height:180px;"><canvas id="chart-grades"></canvas></div>
+                    </div>
+                    
+                    <div class="metric-card" style="min-height:240px; display:flex; flex-direction:column;">
+                        <span class="metric-label" style="font-weight:600; font-size:0.85rem;">3. SGPA Distribution</span>
+                        <div style="flex:1; position:relative; min-height:180px;"><canvas id="chart-sgpa-dist"></canvas></div>
+                    </div>
+
+                    <div class="metric-card" style="min-height:240px; display:flex; flex-direction:column;">
+                        <span class="metric-label" style="font-weight:600; font-size:0.85rem;">4. Subject-wise Pass %</span>
+                        <div style="flex:1; position:relative; min-height:180px;"><canvas id="chart-subpass"></canvas></div>
+                    </div>
+
+                    <div class="metric-card" style="min-height:240px; display:flex; flex-direction:column;">
+                        <span class="metric-label" style="font-weight:600; font-size:0.85rem;">5. Top 10 Students (SGPA)</span>
+                        <div style="flex:1; position:relative; min-height:180px;"><canvas id="chart-topstudents"></canvas></div>
+                    </div>
+
+                    <div class="metric-card" style="min-height:240px; display:flex; flex-direction:column;">
+                        <span class="metric-label" style="font-weight:600; font-size:0.85rem;">6. Average Subject Score</span>
+                        <div style="flex:1; position:relative; min-height:180px;"><canvas id="chart-avgscore"></canvas></div>
+                    </div>
+
+                    <div class="metric-card" style="min-height:240px; display:flex; flex-direction:column;">
+                        <span class="metric-label" style="font-weight:600; font-size:0.85rem;">7. Faculty-wise Subject Result</span>
+                        <div style="flex:1; position:relative; min-height:180px;"><canvas id="chart-facresult"></canvas></div>
+                    </div>
+
+                    <div class="metric-card" style="min-height:240px; display:flex; flex-direction:column;">
+                        <span class="metric-label" style="font-weight:600; font-size:0.85rem;">8. Credit-wise Performance</span>
+                        <div style="flex:1; position:relative; min-height:180px;"><canvas id="chart-creditperf"></canvas></div>
+                    </div>
+
+                    <div class="metric-card" style="min-height:240px; display:flex; flex-direction:column;">
+                        <span class="metric-label" style="font-weight:600; font-size:0.85rem;">9. Subject Difficulty Index (Average Marks)</span>
+                        <div id="difficulty-heatmap-container" style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:0.5rem; padding:1rem 0;">
+                            <!-- Dynamic Heatmap grids -->
+                        </div>
+                    </div>
+
+                    <div class="metric-card" style="min-height:240px; display:flex; flex-direction:column;">
+                        <span class="metric-label" style="font-weight:600; font-size:0.85rem;">10. Backlog Distribution</span>
+                        <div style="flex:1; position:relative; min-height:180px;"><canvas id="chart-backlogs"></canvas></div>
+                    </div>
+
+                    <div class="metric-card" style="min-height:240px; display:flex; flex-direction:column;">
+                        <span class="metric-label" style="font-weight:600; font-size:0.85rem;">11. Semester Performance radar</span>
+                        <div style="flex:1; position:relative; min-height:180px;"><canvas id="chart-radar"></canvas></div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div style="margin-top: 1rem; display: flex; justify-content: flex-end; border-top:1px solid var(--glass-border); padding-top:0.75rem;">
+                <button class="btn" style="padding: 0.5rem 2rem; font-size:0.85rem;" onclick="document.getElementById('resultsModal').style.display='none'">Close Dashboard</button>
             </div>
         </div>
     </div>

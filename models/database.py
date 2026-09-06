@@ -10,15 +10,35 @@ load_dotenv()
 
 class Database:
     def __init__(self):
-        self.mongo_uri = os.environ.get('MONGO_URI', 'mongodb://127.0.0.1:27017/')
+        self.mongo_uri = os.environ.get('MONGODB_URI') or os.environ.get('MONGO_URI') or 'mongodb://127.0.0.1:27017/'
+        self.admin_email = os.environ.get('ADMIN_EMAIL', 'sharmasreshit@gmail.com').strip().lower()
         try:
             self.client = MongoClient(self.mongo_uri, serverSelectionTimeoutMS=5000)
-            self.db = self.client['vtu_analyzer']
+            
+            # Dynamic database selection:
+            # 1. Use MONGODB_DB_NAME or MONGO_DB_NAME if explicitly configured
+            # 2. Extract database defined in URI connection path (via client.get_default_database())
+            # 3. Fallback safely to 'acadfusion_ai' (ensures it never defaults to old project's 'vtu_analyzer')
+            explicit_db = os.environ.get('MONGODB_DB_NAME') or os.environ.get('MONGO_DB_NAME')
+            if explicit_db and explicit_db.strip():
+                self.db_name = explicit_db.strip()
+            else:
+                try:
+                    default_db = self.client.get_default_database()
+                    self.db_name = default_db.name if (default_db is not None and default_db.name) else 'acadfusion_ai'
+                except Exception:
+                    self.db_name = 'acadfusion_ai'
+            
+            # Safeguard: ensure new project never silently falls back to old project's vtu_analyzer
+            if not (explicit_db and explicit_db.strip()) and self.db_name == 'vtu_analyzer':
+                self.db_name = 'acadfusion_ai'
+
+            self.db = self.client[self.db_name]
             self.users = self.db['users']
             self.schedules = self.db['schedules']
             self.teachers = self.db['teachers']
             
-            # New collections for Institution Profile and configuration
+            # Collections for Institution Profile and configuration
             self.institution_profile = self.db['institution_profile']
             self.departments = self.db['departments']
             self.faculty_master = self.db['faculty_master']
@@ -28,18 +48,17 @@ class Database:
             
             # Ping
             self.client.admin.command('ping')
-            print("Successfully connected to MongoDB.")
+            print(f"Successfully connected to MongoDB (database: {self.db_name}).")
+            
+            # Ensure creator admin user permissions are initialized
+            self.ensure_admin_user()
         except Exception as e:
             print(f"MongoDB Connection Error: {e}")
             self.users = None
 
-    def get_user_by_email(self, email):
-        if self.users is None or not email: return None
-        return self.users.find_one({'email': email.strip().lower()})
-
     def ensure_admin_user(self):
-        """Ensures the official creator account sharmasreshit@gmail.com is granted the admin role without altering password hash."""
-        if self.users is None: return
+        """Ensures the official creator account matching ADMIN_EMAIL is granted the admin role without altering password hash."""
+        if self.users is None or not self.admin_email: return
         try:
             user = self.users.find_one({'email': {'$regex': f"^{re.escape(self.admin_email)}$", '$options': 'i'}})
             if user:
@@ -47,7 +66,7 @@ class Database:
                     self.users.update_one({'_id': user['_id']}, {'$set': {'role': 'admin'}})
                     print(f"Granted admin role to creator account: {self.admin_email}")
             else:
-                print(f"Admin account {self.admin_email} not found in DB yet. It will receive admin role upon registration.")
+                print(f"Admin account ({self.admin_email}) configured. It will receive admin role upon registration.")
         except Exception as e:
             print(f"Ensure Admin User Error: {e}")
 
@@ -75,8 +94,11 @@ class Database:
         try:
             self.users.insert_one({
                 'name': name.strip(),
-                'email': email.strip().lower(),
-                'password_hash': hashed_pw
+                'email': email_clean,
+                'password_hash': hashed_pw,
+                'role': role,
+                'created_at': now_iso,
+                'account_status': 'active'
             })
             return True
         except Exception as e:

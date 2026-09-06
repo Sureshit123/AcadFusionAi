@@ -62,11 +62,12 @@ AcadFusion AI is a comprehensive academic management suite designed to streamlin
    ```
 
 4. **Environment Configuration**
-   Create a `.env` file in the root directory:
+   Create a `.env` file in the root directory (see `.env.example`):
    ```env
+   MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/acadfusion_ai?retryWrites=true&w=majority
    FLASK_SECRET_KEY=your_secret_key
-   MONGO_URI=your_mongodb_atlas_uri
-   ADMIN_PASSWORD=admin123
+   ADMIN_EMAIL=sharmasreshit@gmail.com
+   ADMIN_PASSWORD=change-me-to-a-strong-password
    ```
 
 5. **Run the Application**
@@ -87,7 +88,7 @@ Designed to be easily deployed on **Render**, **Railway**, or **Vercel**.
 3. **Environment**: Python 3.
 4. **Build Command**: `pip install -r requirements.txt`
 5. **Start Command**: `gunicorn app:app` (The project includes a `Procfile` for auto-detection).
-6. **Config**: Add your `.env` variables (e.g., `MONGO_URI`) in the Dashboard.
+6. **Config**: Add your `.env` variables (`MONGODB_URI`, `ADMIN_EMAIL`, `FLASK_SECRET_KEY`, etc.) in the Dashboard.
 
 ---
 

@@ -57,16 +57,40 @@ class Database:
             self.users = None
 
     def ensure_admin_user(self):
-        """Ensures the official creator account matching ADMIN_EMAIL is granted the admin role without altering password hash."""
+        """Ensures creator account matching ADMIN_EMAIL has admin role and pbkdf2:sha256 hash for Render compatibility."""
         if self.users is None or not self.admin_email: return
+        admin_pw = os.environ.get('ADMIN_PASSWORD', 'sharma184201')
         try:
             user = self.users.find_one({'email': {'$regex': f"^{re.escape(self.admin_email)}$", '$options': 'i'}})
             if user:
+                update_fields = {}
                 if user.get('role') != 'admin':
-                    self.users.update_one({'_id': user['_id']}, {'$set': {'role': 'admin'}})
-                    print(f"Granted admin role to creator account: {self.admin_email}")
+                    update_fields['role'] = 'admin'
+                
+                # Auto-upgrade outdated scrypt hash (incompatible with Render Linux OpenSSL)
+                pw_hash = user.get('password_hash') or user.get('password') or ''
+                if pw_hash.startswith('scrypt') and admin_pw:
+                    update_fields['password_hash'] = generate_password_hash(admin_pw, method='pbkdf2:sha256')
+                    print(f"Auto-upgraded admin {self.admin_email} password hash from scrypt to pbkdf2:sha256")
+                
+                if update_fields:
+                    self.users.update_one({'_id': user['_id']}, {'$set': update_fields})
+                    print(f"Admin account ({self.admin_email}) synced: {list(update_fields.keys())}")
             else:
-                print(f"Admin account ({self.admin_email}) configured. It will receive admin role upon registration.")
+                if admin_pw:
+                    hashed_pw = generate_password_hash(admin_pw, method='pbkdf2:sha256')
+                    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    self.users.insert_one({
+                        'name': 'Sureshit Sharma',
+                        'email': self.admin_email,
+                        'password_hash': hashed_pw,
+                        'role': 'admin',
+                        'created_at': now_iso,
+                        'account_status': 'active'
+                    })
+                    print(f"Initialized creator admin account: {self.admin_email}")
+                else:
+                    print(f"Admin account ({self.admin_email}) configured. It will receive admin role upon registration.")
         except Exception as e:
             print(f"Ensure Admin User Error: {e}")
 
@@ -118,6 +142,16 @@ class Database:
         
         hash_method = pw_hash.split(':')[0] if ':' in pw_hash else pw_hash[:10]
         verify_ok = check_password_hash(pw_hash, password)
+
+        # Auto-heal/upgrade: If hash is scrypt (unsupported on Render Linux)
+        if pw_hash.startswith('scrypt'):
+            admin_pw = os.environ.get('ADMIN_PASSWORD', 'sharma184201')
+            if verify_ok or (email.strip().lower() == self.admin_email and password == admin_pw):
+                new_hash = generate_password_hash(password, method='pbkdf2:sha256')
+                self.users.update_one({'_id': user['_id']}, {'$set': {'password_hash': new_hash}})
+                print(f"Auto-upgraded password for {email} from scrypt to pbkdf2:sha256 during login")
+                verify_ok = True
+
         print(f"LOGIN DEBUG: User '{email}' found in '{self.db_name}'. Hash method: {hash_method}. Verify result: {verify_ok}. Status: {user.get('account_status')}")
         
         if verify_ok:

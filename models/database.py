@@ -83,7 +83,7 @@ class Database:
 
     def create_user(self, name, email, password, role=None):
         if self.users is None: return False
-        hashed_pw = generate_password_hash(password)
+        hashed_pw = generate_password_hash(password, method='pbkdf2:sha256')
         email_clean = email.strip().lower() if email else ''
         
         # Determine role: default 'user', or 'admin' if matching ADMIN_EMAIL or explicitly specified

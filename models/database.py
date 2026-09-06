@@ -107,7 +107,20 @@ class Database:
 
     def verify_user(self, email, password):
         user = self.get_user_by_email(email)
-        if user and check_password_hash(user['password_hash'], password):
+        if not user:
+            print(f"LOGIN DEBUG: No user found for email '{email}' in database '{self.db_name}'")
+            return None
+        
+        pw_hash = user.get('password_hash') or user.get('password')
+        if not pw_hash:
+            print(f"LOGIN DEBUG: User '{email}' has no password_hash or password field. Fields: {list(user.keys())}")
+            return None
+        
+        hash_method = pw_hash.split(':')[0] if ':' in pw_hash else pw_hash[:10]
+        verify_ok = check_password_hash(pw_hash, password)
+        print(f"LOGIN DEBUG: User '{email}' found in '{self.db_name}'. Hash method: {hash_method}. Verify result: {verify_ok}. Status: {user.get('account_status')}")
+        
+        if verify_ok:
             # Block suspended users
             if user.get('account_status') == 'suspended':
                 print(f"Login rejected: Account {email} is suspended.")

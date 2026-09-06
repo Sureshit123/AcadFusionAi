@@ -50,35 +50,13 @@ def generate_excel_report(results, report_settings=None, user_id=None):
     Generates a professional 7-sheet Excel report including Institution Profile details,
     Faculty Master roster, Subject Master roster, and comprehensive visual analyzer tables.
     """
-    if report_settings is None:
-        report_settings = {}
-    # Initialize metadata from database if possible
-    profile = {}
-    departments = []
-    faculty_members = []
-    subject_mappings_db = []
-    
-    if user_id:
-        try:
-            profile = db_instance.get_institution_profile(user_id) or {}
-            departments = db_instance.get_departments(user_id) or []
-            faculty_members = db_instance.get_faculty_members(user_id) or []
-            if report_settings:
-                subject_mappings_db = db_instance.get_subjects(user_id, {
-                    'academic_year': report_settings.get('academic_year'),
-                    'scheme': report_settings.get('scheme'),
-                    'semester': report_settings.get('semester'),
-                    'department': report_settings.get('department')
-                })
-        except Exception as e:
-            print(f"Error fetching metadata for Excel report: {e}")
+    if not isinstance(results, list):
+        results = []
 
-    # Build DB subjects lookup map
-    sub_map = {}
-    for sm in subject_mappings_db:
-        sub_map[sm.get('subject_code', '').upper()] = sm
-
-    valid_results = [r for r in results if r.get('status') in ['Pass', 'Fail']]
+    valid_results = [
+        r for r in results 
+        if isinstance(r, dict) and r.get('status') in ['Pass', 'Fail']
+    ]
     
     # 1. Compile Analytics Data
     total_students = len(results)
@@ -186,10 +164,21 @@ def generate_excel_report(results, report_settings=None, user_id=None):
         cell.alignment = Alignment(horizontal='center', wrap_text=True)
         cell.border = thin_border
         
-    all_subjects_meta = {}
-    import re as _re
-    # Build wildcard subject list for fallback matching against sub_map
-    sub_map_wildcards = [(k, v) for k, v in sub_map.items() if '**' in k]
+        for r in results:
+            if not isinstance(r, dict): continue
+            status = str(r.get('status', ''))
+            if status == "Pass":
+                total = r.get('total_marks', 0) or 0
+                max_m = r.get('max_marks', 1) or 1
+                per = (total / max_m) * 100 if max_m > 0 else 0
+                if per >= 70: summary_data['FCD'] += 1
+                elif per >= 60: summary_data['FC'] += 1
+                elif per >= 40: summary_data['SC'] += 1
+                else: summary_data['Fail'] += 1
+            elif status == "Fail":
+                summary_data['Fail'] += 1
+            elif "Absent" in status or "No Res" in status:
+                summary_data['Absent'] += 1
 
     for r in valid_results:
         for sub_code, sub_data in r.get('subjects', {}).items():
@@ -233,41 +222,198 @@ def generate_excel_report(results, report_settings=None, user_id=None):
                     )
                     faculty_val = 'Unassigned'
 
-                all_subjects_meta[sub_code] = {
-                    'name': sub_data.get('name', 'N/A'),
-                    'credits': credits_val,
-                    'faculty': faculty_val,
-                    'is_internal_only': sub_data.get('is_internal_only', False),
-                    'distinction': 0, 'first': 0, 'second': 0, 'failed': 0, 'absent': 0,
-                    'appeared': 0, 'passed': 0
-                }
+        # --- SHEET 2: SUBJECT-WISE RESULT ANALYSIS ---
+        all_subjects_meta = {} # code -> name
+        for r in valid_results:
+            subjects = r.get('subjects') or {}
+            if isinstance(subjects, dict):
+                for sub_code, sub_data in subjects.items():
+                    if sub_code not in all_subjects_meta:
+                        if isinstance(sub_data, dict):
+                            all_subjects_meta[sub_code] = sub_data.get('name', 'N/A')
+                        else:
+                            all_subjects_meta[sub_code] = 'N/A'
+
+        if valid_results:
+            sub_analysis = []
+            for sub_code, sub_name in all_subjects_meta.items():
+                stats = {'fcd': 0, 'fc': 0, 'sc': 0, 'fail': 0, 'absent': 0, 'appeared': 0}
+                for r in valid_results:
+                    subjects = r.get('subjects') or {}
+                    sub_data = subjects.get(sub_code) if isinstance(subjects, dict) else None
+                    if isinstance(sub_data, dict):
+                        res = str(sub_data.get('result', '')).upper()
+                        total = sub_data.get('total', 0) or 0
+                        if res in ['A', 'ABSENT']:
+                            stats['absent'] += 1
+                        else:
+                            stats['appeared'] += 1
+                            if res in ['P', 'PASS']:
+                                if total >= 70: stats['fcd'] += 1
+                                elif total >= 60: stats['fc'] += 1
+                                elif total >= 40: stats['sc'] += 1
+                                else: stats['fail'] += 1
+                            else:
+                                stats['fail'] += 1
+                
+                passed = stats['fcd'] + stats['fc'] + stats['sc']
+                p_per = round((passed / stats['appeared']) * 100, 2) if stats['appeared'] > 0 else 0
+                
+                sub_analysis.append({
+                    'Subjects': sub_name,
+                    'Sub code': sub_code,
+                    'FCD (70-100%)': stats['fcd'],
+                    'FC (60-69%)': stats['fc'],
+                    'SC (40-59%)': stats['sc'],
+                    'Fail': stats['fail'],
+                    'Absent': stats['absent'],
+                    'Total students Appeared': stats['appeared'],
+                    'No of student passed': passed,
+                    'Passing %age': p_per
+                })
             
             info = all_subjects_meta[sub_code]
             res = str(sub_data.get('result', '')).upper()
             total = int(sub_data.get('total', 0))
             
-            if res in ['A', 'ABSENT']:
-                info['absent'] += 1
-            else:
-                info['appeared'] += 1
-                if res in ['P', 'PASS']:
-                    if total >= 70:
-                        info['distinction'] += 1  # FCD: 70–100
-                        info['passed'] += 1
-                    elif total >= 60:
-                        info['first'] += 1        # FC: 60–69
-                        info['passed'] += 1
-                    elif total >= 35:
-                        info['second'] += 1       # SC: 35–59 (inclusive)
-                        info['passed'] += 1
-                    else:
-                        info['failed'] += 1       # Fail: 0–34
-                else:
-                    info['failed'] += 1
+            # Title for Sheet 2
+            ws_sub.merge_cells('A1:J1')
+            ws_sub['A1'] = "SUBJECT-WISE RESULT ANALYSIS"
+            ws_sub['A1'].font = Font(bold=True, size=12)
+            ws_sub['A1'].alignment = Alignment(horizontal='center')
 
-    row_idx = 4
-    for code, info in all_subjects_meta.items():
-        pass_rate = round((info['passed'] / info['appeared']) * 100, 2) if info['appeared'] > 0 else 0.0
+            # Formatting & Conditional Color
+            green_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
+            red_fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')
+            
+            for row_idx, row in enumerate(ws_sub.iter_rows(min_row=4, max_row=ws_sub.max_row, min_col=1, max_col=10), 4):
+                for cell in row:
+                    cell.border = thin_border
+                    if row_idx == 4:
+                        cell.font = Font(bold=True)
+                        cell.alignment = Alignment(horizontal='center', wrap_text=True)
+                    else:
+                        if cell.column >= 3:
+                            cell.alignment = Alignment(horizontal='center')
+                        if cell.column == 10:
+                            if isinstance(cell.value, (int, float)):
+                                cell.fill = green_fill if cell.value >= 80 else red_fill
+
+            # Auto-adjust column widths
+            for col in ws_sub.columns:
+                max_length = 0
+                column_letter = get_column_letter(col[0].column)
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except: pass
+                ws_sub.column_dimensions[column_letter].width = min(max_length + 2, 40)
+
+            # --- ADD CHART TO SHEET 1 (Referencing Sheet 2 data) ---
+            if ws_sub.max_row > 4:
+                chart = BarChart()
+                chart.type = "col"
+                chart.style = 10
+                chart.title = "Subject wise %"
+                chart.y_axis.title = 'PERCENTAGE'
+                chart.x_axis.title = 'SUBJECTS'
+                chart.height = 12
+                chart.width = 25
+                chart.x_axis.labelRotation = 4500 
+
+                chart.dataLabels = DataLabelList()
+                chart.dataLabels.showVal = True
+                
+                data = Reference(ws_sub, min_col=10, min_row=4, max_row=ws_sub.max_row)
+                cats = Reference(ws_sub, min_col=1, min_row=5, max_row=ws_sub.max_row)
+                
+                chart.add_data(data, titles_from_data=True)
+                chart.set_categories(cats)
+                chart.legend = None
+                
+                if chart.series:
+                    chart.series[0].graphical_properties = GraphicalProperties(solidFill=ColorChoice(srgbClr="4F81BD"))
+
+                ws_sum.add_chart(chart, "A12")
+
+        # --- SHEET 3: All Students ---
+        all_subject_codes = sorted(list(all_subjects_meta.keys()))
+        df_all = []
+        for i, r in enumerate(results):
+            if not isinstance(r, dict): continue
+            res_status = str(r.get('status', 'N/A'))
+            student_name = r.get('name') if r.get('name') else res_status
+            row = {'SL.No': i + 1, 'USN': r.get('usn', 'N/A'), 'NAME': student_name}
+            backlog_count = 0
+            subjects = r.get('subjects') or {}
+            for sub_code in all_subject_codes:
+                if res_status in ['Pass', 'Fail']:
+                    sub_data = subjects.get(sub_code) if isinstance(subjects, dict) else None
+                    if isinstance(sub_data, dict):
+                        row[f'{sub_code}_INT'] = sub_data.get('internal', 0)
+                        row[f'{sub_code}_EXT'] = sub_data.get('external', 0)
+                        row[f'{sub_code}_TOT'] = sub_data.get('total', 0)
+                        res_flag = str(sub_data.get('result', '')).upper()
+                        row[f'{sub_code}_PT'] = res_flag
+                        if res_flag in ['F', 'A', 'ABSENT', 'FAIL']: backlog_count += 1
+                    else:
+                        for k in ['INT', 'EXT', 'TOT', 'PT']: row[f'{sub_code}_{k}'] = '-'
+                else:
+                    for k in ['INT', 'EXT', 'TOT', 'PT']: row[f'{sub_code}_{k}'] = '-'
+            row['Grand Total'] = r.get('total_marks', 0) if res_status in ['Pass', 'Fail'] else '-'
+            row['No.of B/L'] = backlog_count if res_status in ['Pass', 'Fail'] else '-'
+            df_all.append(row)
+        
+        df_all_final = pd.DataFrame(df_all)
+        df_all_final.to_excel(writer, sheet_name='All Students', index=False, startrow=1)
+        ws_all = writer.sheets['All Students']
+        
+        # Advanced Merged Headers for Sheet 3
+        header_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
+        yellow_row_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+        
+        for col_idx, col_name in enumerate(['SL.No', 'USN', 'NAME'], 1):
+            ws_all.cell(row=1, column=col_idx, value=col_name)
+            ws_all.merge_cells(start_row=1, start_column=col_idx, end_row=2, end_column=col_idx)
+
+        # Dynamic Subject Headers (Horizontal Merge)
+        curr_col = 4
+        for sub_code in all_subject_codes:
+            sub_name = all_subjects_meta.get(sub_code, "N/A")
+            ws_all.cell(row=1, column=curr_col, value=f"{sub_code} - {sub_name}")
+            ws_all.merge_cells(start_row=1, start_column=curr_col, end_row=1, end_column=curr_col+3)
+            # Row 2 sub-headers
+            for off, txt in enumerate(['INT', 'EXT', 'TOT', 'PT']):
+                ws_all.cell(row=2, column=curr_col+off, value=txt)
+            curr_col += 4
+            
+        # Summary columns vertical merge
+        for col_name in ['Grand Total', 'No.of B/L']:
+            ws_all.cell(row=1, column=curr_col, value=col_name)
+            ws_all.merge_cells(start_row=1, start_column=curr_col, end_row=2, end_column=curr_col)
+            curr_col += 1
+
+        # Apply Styling & Backlog Highlighting
+        for row_idx, row in enumerate(ws_all.iter_rows(min_row=1, max_row=ws_all.max_row, min_col=1, max_col=ws_all.max_column), 1):
+            if row_idx <= 2:
+                for cell in row:
+                    cell.font = Font(bold=True, size=9)
+                    cell.fill = header_fill
+                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                    cell.border = thin_border
+            else:
+                bl_cell = row[-1]
+                has_backlog = False
+                try:
+                    if isinstance(bl_cell.value, int) and bl_cell.value > 0: has_backlog = True
+                except: pass
+                
+                for cell in row:
+                    cell.border = thin_border
+                    cell.alignment = Alignment(horizontal='center')
+                    if has_backlog:
+                        cell.fill = yellow_row_fill
         
         ws_sub.cell(row=row_idx, column=1, value=info['name']).border = thin_border
         ws_sub.cell(row=row_idx, column=2, value=code).border = thin_border
@@ -293,553 +439,31 @@ def generate_excel_report(results, report_settings=None, user_id=None):
         col_letter = get_column_letter(col[0].column)
         ws_sub.column_dimensions[col_letter].width = min(max(max_len + 3, 10), 35)
 
-    # Add Chart to Sheet 1 referencing Sheet 2 Passing %
-    if all_subjects_meta:
-        chart = BarChart()
-        chart.type = "col"
-        chart.style = 10
-        chart.title = "Subject wise Passing Percentage"
-        chart.y_axis.title = 'Percentage'
-        chart.x_axis.title = 'Subjects'
-        chart.height = 12
-        chart.width = 20
-        chart.x_axis.labelRotation = 4500
-        
-        chart.dataLabels = DataLabelList()
-        chart.dataLabels.showVal = True
-        
-        data_ref = Reference(ws_sub, min_col=12, min_row=3, max_row=ws_sub.max_row)
-        cats_ref = Reference(ws_sub, min_col=2, min_row=4, max_row=ws_sub.max_row)
-        
-        chart.add_data(data_ref, titles_from_data=True)
-        chart.set_categories(cats_ref)
-        chart.legend = None
-        
-        if chart.series:
-            chart.series[0].graphical_properties = GraphicalProperties(solidFill=ColorChoice(srgbClr="7C3AED"))
-            
-        ws_sum.add_chart(chart, "D7")
+        # --- SHEET 4: Top 5 Toppers ---
+        toppers = sorted(
+            [r for r in valid_results if r.get('status') == 'Pass'], 
+            key=lambda x: x.get('total_marks', 0) or 0, 
+            reverse=True
+        )[:5]
 
-    # --- SHEET 3: ALL STUDENTS ---
-    ws_all = wb.create_sheet('All Students')
-    ws_all.views.sheetView[0].showGridLines = True
-    ws_all.cell(row=1, column=1, value="Detailed Student Marksheet").font = Font(bold=True, size=14, color='1E1B4B')
-    
-    all_subject_codes = sorted(list(all_subjects_meta.keys()))
-    skyblue_fill = PatternFill(start_color='BAE6FD', end_color='BAE6FD', fill_type='solid') # Sky 200 / Sky Blue
-    
-    # Multi-row Headers
-    ws_all.cell(row=3, column=1, value="SL.No")
-    ws_all.merge_cells("A3:A4")
-    ws_all.cell(row=3, column=2, value="USN")
-    ws_all.merge_cells("B3:B4")
-    ws_all.cell(row=3, column=3, value="Student Name")
-    ws_all.merge_cells("C3:C4")
-    
-    curr_col = 4
-    for code in all_subject_codes:
-        ws_all.cell(row=3, column=curr_col, value=code)
-        ws_all.merge_cells(start_row=3, start_column=curr_col, end_row=3, end_column=curr_col+3)
-        
-        # Subheaders in row 4
-        ws_all.cell(row=4, column=curr_col, value="INT")
-        ws_all.cell(row=4, column=curr_col+1, value="EXT")
-        ws_all.cell(row=4, column=curr_col+2, value="TOT")
-        ws_all.cell(row=4, column=curr_col+3, value="RES")
-        curr_col += 4
-        
-    ws_all.cell(row=3, column=curr_col, value="Grand Total")
-    ws_all.merge_cells(start_row=3, start_column=curr_col, end_row=4, end_column=curr_col)
-    
-    ws_all.cell(row=3, column=curr_col+1, value="Percentage")
-    ws_all.merge_cells(start_row=3, start_column=curr_col+1, end_row=4, end_column=curr_col+1)
-    
-    ws_all.cell(row=3, column=curr_col+2, value="SGPA")
-    ws_all.merge_cells(start_row=3, start_column=curr_col+2, end_row=4, end_column=curr_col+2)
-    
-    ws_all.cell(row=3, column=curr_col+3, value="No. of B/L")
-    ws_all.merge_cells(start_row=3, start_column=curr_col+3, end_row=4, end_column=curr_col+3)
-    
-    ws_all.cell(row=3, column=curr_col+4, value="Class Classify")
-    ws_all.merge_cells(start_row=3, start_column=curr_col+4, end_row=4, end_column=curr_col+4)
-    
-    ws_all.cell(row=3, column=curr_col+5, value="RESULT")
-    ws_all.merge_cells(start_row=3, start_column=curr_col+5, end_row=4, end_column=curr_col+5)
-    
-    # Fill headers background & borders
-    for row in range(3, 5):
-        for col in range(1, curr_col + 6):
-            cell = ws_all.cell(row=row, column=col)
-            cell.font = Font(bold=True, size=9)
-            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-            cell.fill = sub_header_fill
-            cell.border = thin_border
-            
-    # Add Student Marks
-    student_row_idx = 5
-    for i, r in enumerate(results):
-        res_status = r.get('status', 'Fail')
-        ws_all.cell(row=student_row_idx, column=1, value=i+1).border = thin_border
-        ws_all.cell(row=student_row_idx, column=2, value=r.get('usn')).border = thin_border
-        ws_all.cell(row=student_row_idx, column=3, value=r.get('name', 'N/A')).border = thin_border
-        
-        has_backlog = False
-        backlog_count = 0
-        failed_subject_cols = []
-        
-        c_col = 4
-        for code in all_subject_codes:
-            sub_data = r.get('subjects', {}).get(code)
-            if sub_data:
-                internal = int(sub_data.get('internal', 0))
-                external = int(sub_data.get('external', 0))
-                total = int(sub_data.get('total', 0))
-                res_flag = str(sub_data.get('result', '')).upper().strip()
-                is_int_only = sub_data.get('is_internal_only', False) or \
-                    all_subjects_meta.get(code, {}).get('is_internal_only', False)
+        df_toppers = pd.DataFrame([{
+            'Rank': i+1, 
+            'USN': t.get('usn', 'N/A'), 
+            'Name': t.get('name', 'N/A'), 
+            'Total': t.get('total_marks', 0)
+        } for i, t in enumerate(toppers)])
+        df_toppers.to_excel(writer, sheet_name='Top 5 Toppers', index=False)
 
-                # A subject counts as a backlog only when it genuinely failed.
-                # Internal-only subjects with result='F' still count as backlog.
-                # The key fix: internal-only subjects with result='P' should NOT be
-                # misclassified as failed just because external=0.
-                is_failed_subject = res_flag in ['F', 'FAIL', 'A', 'ABSENT', 'NE', 'NOT ELIGIBLE', 'N']
-
-                if is_failed_subject:
-                    backlog_count += 1
-                    has_backlog = True
-                    failed_subject_cols.append((c_col, c_col + 3))
-                
-                ws_all.cell(row=student_row_idx, column=c_col, value=internal).border = thin_border
-                ws_all.cell(row=student_row_idx, column=c_col+1, value=external).border = thin_border
-                ws_all.cell(row=student_row_idx, column=c_col+2, value=total).border = thin_border
-                ws_all.cell(row=student_row_idx, column=c_col+3, value=res_flag).border = thin_border
-            else:
-                for off in range(4):
-                    ws_all.cell(row=student_row_idx, column=c_col+off, value="-").border = thin_border
-            c_col += 4
-            
-        grand_total = r.get('total_marks', 0) if res_status in ['Pass', 'Fail'] else '-'
-        sgpa_val = float(r.get('sgpa', 0.0))
-        
-        # Calculate percentage
+        # Ensure all sheets are visible and active sheet is valid BEFORE ExcelWriter closes & saves
         try:
-            tm_val = int(r.get('total_marks', 0))
-        except:
-            tm_val = 0
-        sub_cnt = len(r.get('subjects', {}))
-        max_m = r.get('max_marks')
-        if not max_m:
-            max_m = sub_cnt * 100
-        pct_val = r.get('percentage')
-        if pct_val is None:
-            pct_val = (tm_val / max_m * 100) if max_m > 0 else 0.0
-        pct_str = f"{pct_val:.2f}%" if res_status in ['Pass', 'Fail'] else '-'
-        
-        # Determine class category and result status string
-        if res_status == "Pass":
-            if sgpa_val >= 7.75: class_cat = "Distinction"
-            elif sgpa_val >= 6.75: class_cat = "First Class"
-            elif sgpa_val >= 5.75: class_cat = "Second Class"
-            else: class_cat = "Pass Class"
-            result_status_str = "Fail" if has_backlog else "Pass"
-        elif res_status == "Fail":
-            class_cat = "Fail Class"
-            result_status_str = "Fail"
-        else:
-            class_cat = res_status
-            result_status_str = res_status
-            
-        ws_all.cell(row=student_row_idx, column=c_col, value=grand_total).border = thin_border
-        ws_all.cell(row=student_row_idx, column=c_col+1, value=pct_str).border = thin_border
-        ws_all.cell(row=student_row_idx, column=c_col+2, value=sgpa_val if res_status in ['Pass', 'Fail'] else '-').border = thin_border
-        ws_all.cell(row=student_row_idx, column=c_col+3, value=backlog_count if res_status in ['Pass', 'Fail'] else '-').border = thin_border
-        ws_all.cell(row=student_row_idx, column=c_col+4, value=class_cat).border = thin_border
-        ws_all.cell(row=student_row_idx, column=c_col+5, value=result_status_str).border = thin_border
-        
-        # Center align overall metric columns (6 columns)
-        for offset in range(6):
-            ws_all.cell(row=student_row_idx, column=c_col+offset).alignment = Alignment(horizontal='center')
-            
-        # Apply conditional coloring
-        if res_status not in ['Pass', 'Fail']:
-            ws_all.cell(row=student_row_idx, column=c_col+5).fill = yellow_fill
-        elif has_backlog:
-            for col in range(1, c_col + 6):
-                # Check if column falls inside any failed subject range
-                is_failed_col = False
-                for start_col, end_col in failed_subject_cols:
-                    if start_col <= col <= end_col:
-                        is_failed_col = True
-                        break
-                
-                if col == c_col + 5: # RESULT column
-                    ws_all.cell(row=student_row_idx, column=col).fill = red_fill
-                elif is_failed_col:
-                    ws_all.cell(row=student_row_idx, column=col).fill = skyblue_fill
-                else:
-                    ws_all.cell(row=student_row_idx, column=col).fill = yellow_fill
-        else:
-            # All subjects pass
-            ws_all.cell(row=student_row_idx, column=c_col+5).fill = green_fill
-            
-        student_row_idx += 1
-
-    ws_all.column_dimensions['A'].width = 8
-    ws_all.column_dimensions['B'].width = 15
-    ws_all.column_dimensions['C'].width = 25
-
-    # --- SHEET 4: TOP 5 MARKS SECURED ---
-    ws_top_marks = wb.create_sheet('Top 5 Marks Secured')
-    ws_top_marks.views.sheetView[0].showGridLines = True
-    ws_top_marks.cell(row=1, column=1, value="Top 5 Students (Marks Secured)").font = Font(bold=True, size=14, color='1E1B4B')
-    
-    valid_student_marks = []
-    for r in results:
-        if r.get('status') in ['Pass', 'Fail']:
-            try:
-                tm = int(r.get('total_marks', 0))
-            except:
-                tm = 0
-            valid_student_marks.append((tm, r))
-    valid_student_marks.sort(key=lambda x: x[0], reverse=True)
-    
-    headers_top_marks = ["Rank", "USN", "Student Name", "Total Marks", "Marks Secured", "Percentage", "Result"]
-    for c_idx, h in enumerate(headers_top_marks, 1):
-        cell = ws_top_marks.cell(row=3, column=c_idx, value=h)
-        cell.font = Font(bold=True, color='FFFFFF')
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal='center')
-        cell.border = thin_border
-        
-    top_row_idx = 4
-    current_rank = 0
-    prev_marks = None
-    for tm, r in valid_student_marks:
-        if prev_marks is None or tm != prev_marks:
-            current_rank += 1
-        if current_rank > 5:
-            break
-            
-        prev_marks = tm
-        
-        sub_cnt = len(r.get('subjects', {}))
-        max_m = r.get('max_marks')
-        if not max_m:
-            max_m = sub_cnt * 100
-            
-        pct = r.get('percentage')
-        if pct is None:
-            pct = (tm / max_m * 100) if max_m > 0 else 0.0
-            
-        ws_top_marks.cell(row=top_row_idx, column=1, value=current_rank).border = thin_border
-        ws_top_marks.cell(row=top_row_idx, column=2, value=r.get('usn')).border = thin_border
-        ws_top_marks.cell(row=top_row_idx, column=3, value=r.get('name', 'N/A')).border = thin_border
-        ws_top_marks.cell(row=top_row_idx, column=4, value=max_m).border = thin_border
-        ws_top_marks.cell(row=top_row_idx, column=5, value=tm).border = thin_border
-        ws_top_marks.cell(row=top_row_idx, column=6, value=f"{pct:.2f}%").border = thin_border
-        ws_top_marks.cell(row=top_row_idx, column=7, value=r.get('status')).border = thin_border
-        
-        for c in [1, 2, 4, 5, 6, 7]:
-            ws_top_marks.cell(row=top_row_idx, column=c).alignment = Alignment(horizontal='center')
-            
-        # Determine rank fill
-        rank_fill = None
-        if current_rank == 1: rank_fill = gold_fill
-        elif current_rank == 2: rank_fill = silver_fill
-        elif current_rank == 3: rank_fill = bronze_fill
-        elif current_rank == 4: rank_fill = rank4_fill
-        elif current_rank == 5: rank_fill = rank5_fill
-
-        if rank_fill:
-            for col_idx in range(1, 8):
-                ws_top_marks.cell(row=top_row_idx, column=col_idx).fill = rank_fill
-                
-        top_row_idx += 1
-        
-    for col in ws_top_marks.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws_top_marks.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 45)
-
-    # --- SHEET 5: TOP 5 SGPA ---
-    ws_top_sgpa = wb.create_sheet('Top 5 SGPA')
-    ws_top_sgpa.views.sheetView[0].showGridLines = True
-    ws_top_sgpa.cell(row=1, column=1, value="Top 5 Students (SGPA)").font = Font(bold=True, size=14, color='1E1B4B')
-    
-    valid_student_sgpa = []
-    for r in results:
-        if r.get('status') in ['Pass', 'Fail']:
-            try:
-                sg = float(r.get('sgpa', 0.0))
-            except:
-                sg = 0.0
-            valid_student_sgpa.append((sg, r))
-    valid_student_sgpa.sort(key=lambda x: x[0], reverse=True)
-    
-    headers_top_sgpa = ["Rank", "USN", "Student Name", "SGPA", "Total Marks", "Marks Secured", "Result"]
-    for c_idx, h in enumerate(headers_top_sgpa, 1):
-        cell = ws_top_sgpa.cell(row=3, column=c_idx, value=h)
-        cell.font = Font(bold=True, color='FFFFFF')
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal='center')
-        cell.border = thin_border
-        
-    top_row_idx = 4
-    current_rank = 0
-    prev_sgpa = None
-    for sg, r in valid_student_sgpa:
-        if prev_sgpa is None or sg != prev_sgpa:
-            current_rank += 1
-        if current_rank > 5:
-            break
-            
-        prev_sgpa = sg
-        
-        tm = 0
-        try:
-            tm = int(r.get('total_marks', 0))
-        except:
+            wb = writer.book
+            if wb and wb.worksheets:
+                for ws in wb.worksheets:
+                    ws.sheet_state = 'visible'
+                wb.active = 0
+        except Exception:
             pass
-            
-        sub_cnt = len(r.get('subjects', {}))
-        max_m = r.get('max_marks')
-        if not max_m:
-            max_m = sub_cnt * 100
-            
-        ws_top_sgpa.cell(row=top_row_idx, column=1, value=current_rank).border = thin_border
-        ws_top_sgpa.cell(row=top_row_idx, column=2, value=r.get('usn')).border = thin_border
-        ws_top_sgpa.cell(row=top_row_idx, column=3, value=r.get('name', 'N/A')).border = thin_border
-        ws_top_sgpa.cell(row=top_row_idx, column=4, value=sg).border = thin_border
-        ws_top_sgpa.cell(row=top_row_idx, column=5, value=max_m).border = thin_border
-        ws_top_sgpa.cell(row=top_row_idx, column=6, value=tm).border = thin_border
-        ws_top_sgpa.cell(row=top_row_idx, column=7, value=r.get('status')).border = thin_border
-        
-        for c in [1, 2, 4, 5, 6, 7]:
-            ws_top_sgpa.cell(row=top_row_idx, column=c).alignment = Alignment(horizontal='center')
-            
-        # Determine rank fill
-        rank_fill = None
-        if current_rank == 1: rank_fill = gold_fill
-        elif current_rank == 2: rank_fill = silver_fill
-        elif current_rank == 3: rank_fill = bronze_fill
-        elif current_rank == 4: rank_fill = rank4_fill
-        elif current_rank == 5: rank_fill = rank5_fill
 
-        if rank_fill:
-            for col_idx in range(1, 8):
-                ws_top_sgpa.cell(row=top_row_idx, column=col_idx).fill = rank_fill
-                
-        top_row_idx += 1
-        
-    for col in ws_top_sgpa.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws_top_sgpa.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 45)
-
-    # --- SHEET 6: STUDENTS WITH BACKLOGS ---
-    ws_backlogs = wb.create_sheet('Students with Backlogs')
-    ws_backlogs.views.sheetView[0].showGridLines = True
-    ws_backlogs.cell(row=1, column=1, value="Students with Backlogs").font = Font(bold=True, size=14, color='991B1B')
-    
-    headers_bl = ["SL.No", "USN", "Student Name", "Total Marks", "Marks Secured", "Percentage", "SGPA", "No. of Backlogs", "Result"]
-    for c_idx, h in enumerate(headers_bl, 1):
-        cell = ws_backlogs.cell(row=3, column=c_idx, value=h)
-        cell.font = Font(bold=True, color='FFFFFF')
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal='center')
-        cell.border = thin_border
-        
-    bl_row_idx = 4
-    sl_no_bl = 1
-    for r in results:
-        if r.get('status') in ['Pass', 'Fail']:
-            backlog_count = 0
-            for sub_code, sub_data in r.get('subjects', {}).items():
-                res_flag = str(sub_data.get('result', '')).upper()
-                if res_flag in ['F', 'A', 'ABSENT', 'FAIL']:
-                    backlog_count += 1
-            
-            if backlog_count > 0:
-                try:
-                    tm = int(r.get('total_marks', 0))
-                except:
-                    tm = 0
-                sub_cnt = len(r.get('subjects', {}))
-                max_m = r.get('max_marks')
-                if not max_m:
-                    max_m = sub_cnt * 100
-                pct = r.get('percentage')
-                if pct is None:
-                    pct = (tm / max_m * 100) if max_m > 0 else 0.0
-                    
-                ws_backlogs.cell(row=bl_row_idx, column=1, value=sl_no_bl).border = thin_border
-                ws_backlogs.cell(row=bl_row_idx, column=2, value=r.get('usn')).border = thin_border
-                ws_backlogs.cell(row=bl_row_idx, column=3, value=r.get('name', 'N/A')).border = thin_border
-                ws_backlogs.cell(row=bl_row_idx, column=4, value=max_m).border = thin_border
-                ws_backlogs.cell(row=bl_row_idx, column=5, value=tm).border = thin_border
-                ws_backlogs.cell(row=bl_row_idx, column=6, value=f"{pct:.2f}%").border = thin_border
-                ws_backlogs.cell(row=bl_row_idx, column=7, value=float(r.get('sgpa', 0))).border = thin_border
-                ws_backlogs.cell(row=bl_row_idx, column=8, value=backlog_count).border = thin_border
-                ws_backlogs.cell(row=bl_row_idx, column=9, value=r.get('status')).border = thin_border
-                
-                for col in range(1, 10):
-                    ws_backlogs.cell(row=bl_row_idx, column=col).fill = yellow_fill
-                    ws_backlogs.cell(row=bl_row_idx, column=col).border = thin_border
-                    if col != 3:
-                        ws_backlogs.cell(row=bl_row_idx, column=col).alignment = Alignment(horizontal='center')
-                    
-                bl_row_idx += 1
-                sl_no_bl += 1
-                
-    for col in ws_backlogs.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws_backlogs.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 45)
-
-    # --- SHEET 7: STUDENT RANKINGS (MARKS) ---
-    ws_rank_marks = wb.create_sheet('Student Rankings (Marks)')
-    ws_rank_marks.views.sheetView[0].showGridLines = True
-    ws_rank_marks.cell(row=1, column=1, value="Student Rankings (by Marks Secured)").font = Font(bold=True, size=14, color='1E1B4B')
-    
-    valid_student_marks_all = []
-    for r in results:
-        if r.get('status') in ['Pass', 'Fail']:
-            try:
-                tm = int(r.get('total_marks', 0))
-            except:
-                tm = 0
-            valid_student_marks_all.append((tm, r))
-    valid_student_marks_all.sort(key=lambda x: x[0], reverse=True)
-    
-    headers_rank_marks = ["Rank", "USN", "Student Name", "Total Marks", "Marks Secured", "Percentage", "Result"]
-    for c_idx, h in enumerate(headers_rank_marks, 1):
-        cell = ws_rank_marks.cell(row=3, column=c_idx, value=h)
-        cell.font = Font(bold=True, color='FFFFFF')
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal='center')
-        cell.border = thin_border
-        
-    rank_row_idx = 4
-    current_rank = 0
-    prev_marks = None
-    for tm, r in valid_student_marks_all:
-        if prev_marks is None or tm != prev_marks:
-            current_rank += 1
-        prev_marks = tm
-        
-        sub_cnt = len(r.get('subjects', {}))
-        max_m = r.get('max_marks')
-        if not max_m:
-            max_m = sub_cnt * 100
-            
-        pct = r.get('percentage')
-        if pct is None:
-            pct = (tm / max_m * 100) if max_m > 0 else 0.0
-            
-        ws_rank_marks.cell(row=rank_row_idx, column=1, value=current_rank).border = thin_border
-        ws_rank_marks.cell(row=rank_row_idx, column=2, value=r.get('usn')).border = thin_border
-        ws_rank_marks.cell(row=rank_row_idx, column=3, value=r.get('name', 'N/A')).border = thin_border
-        ws_rank_marks.cell(row=rank_row_idx, column=4, value=max_m).border = thin_border
-        ws_rank_marks.cell(row=rank_row_idx, column=5, value=tm).border = thin_border
-        ws_rank_marks.cell(row=rank_row_idx, column=6, value=f"{pct:.2f}%").border = thin_border
-        ws_rank_marks.cell(row=rank_row_idx, column=7, value=r.get('status')).border = thin_border
-        
-        for c in [1, 2, 4, 5, 6, 7]:
-            ws_rank_marks.cell(row=rank_row_idx, column=c).alignment = Alignment(horizontal='center')
-            
-        rank_fill = None
-        if current_rank == 1: rank_fill = gold_fill
-        elif current_rank == 2: rank_fill = silver_fill
-        elif current_rank == 3: rank_fill = bronze_fill
-        elif current_rank == 4: rank_fill = rank4_fill
-        elif current_rank == 5: rank_fill = rank5_fill
-
-        if rank_fill:
-            for col_idx in range(1, 8):
-                ws_rank_marks.cell(row=rank_row_idx, column=col_idx).fill = rank_fill
-                
-        rank_row_idx += 1
-        
-    for col in ws_rank_marks.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws_rank_marks.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 45)
-
-    # --- SHEET 8: STUDENT RANKINGS (SGPA) ---
-    ws_rank_sgpa = wb.create_sheet('Student Rankings (SGPA)')
-    ws_rank_sgpa.views.sheetView[0].showGridLines = True
-    ws_rank_sgpa.cell(row=1, column=1, value="Student Rankings (by SGPA)").font = Font(bold=True, size=14, color='1E1B4B')
-    
-    valid_student_sgpa_all = []
-    for r in results:
-        if r.get('status') in ['Pass', 'Fail']:
-            try:
-                sg = float(r.get('sgpa', 0.0))
-            except:
-                sg = 0.0
-            valid_student_sgpa_all.append((sg, r))
-    valid_student_sgpa_all.sort(key=lambda x: x[0], reverse=True)
-    
-    headers_rank_sgpa = ["Rank", "USN", "Student Name", "SGPA", "Total Marks", "Marks Secured", "Result"]
-    for c_idx, h in enumerate(headers_rank_sgpa, 1):
-        cell = ws_rank_sgpa.cell(row=3, column=c_idx, value=h)
-        cell.font = Font(bold=True, color='FFFFFF')
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal='center')
-        cell.border = thin_border
-        
-    rank_row_idx = 4
-    current_rank = 0
-    prev_sgpa = None
-    for sg, r in valid_student_sgpa_all:
-        if prev_sgpa is None or sg != prev_sgpa:
-            current_rank += 1
-        prev_sgpa = sg
-        
-        tm = 0
-        try:
-            tm = int(r.get('total_marks', 0))
-        except:
-            pass
-            
-        sub_cnt = len(r.get('subjects', {}))
-        max_m = r.get('max_marks')
-        if not max_m:
-            max_m = sub_cnt * 100
-            
-        ws_rank_sgpa.cell(row=rank_row_idx, column=1, value=current_rank).border = thin_border
-        ws_rank_sgpa.cell(row=rank_row_idx, column=2, value=r.get('usn')).border = thin_border
-        ws_rank_sgpa.cell(row=rank_row_idx, column=3, value=r.get('name', 'N/A')).border = thin_border
-        ws_rank_sgpa.cell(row=rank_row_idx, column=4, value=sg).border = thin_border
-        ws_rank_sgpa.cell(row=rank_row_idx, column=5, value=max_m).border = thin_border
-        ws_rank_sgpa.cell(row=rank_row_idx, column=6, value=tm).border = thin_border
-        ws_rank_sgpa.cell(row=rank_row_idx, column=7, value=r.get('status')).border = thin_border
-        
-        for c in [1, 2, 4, 5, 6, 7]:
-            ws_rank_sgpa.cell(row=rank_row_idx, column=c).alignment = Alignment(horizontal='center')
-            
-        rank_fill = None
-        if current_rank == 1: rank_fill = gold_fill
-        elif current_rank == 2: rank_fill = silver_fill
-        elif current_rank == 3: rank_fill = bronze_fill
-        elif current_rank == 4: rank_fill = rank4_fill
-        elif current_rank == 5: rank_fill = rank5_fill
-
-        if rank_fill:
-            for col_idx in range(1, 8):
-                ws_rank_sgpa.cell(row=rank_row_idx, column=col_idx).fill = rank_fill
-                
-        rank_row_idx += 1
-        
-    for col in ws_rank_sgpa.columns:
-        max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = get_column_letter(col[0].column)
-        ws_rank_sgpa.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 45)
-
-    # --- END OF EXCEL GENERATION ---
-
-    # Save to buffer
-    wb.save(output)
     output.seek(0)
     return output
 

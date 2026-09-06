@@ -33,8 +33,9 @@ class Database:
             print(f"MongoDB Connection Error: {e}")
             self.users = None
 
-        ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'sharmasreshit@gmail.com').strip().lower()
-        self.admin_email = ADMIN_EMAIL
+    def get_user_by_email(self, email):
+        if self.users is None or not email: return None
+        return self.users.find_one({'email': email.strip().lower()})
 
     def ensure_admin_user(self):
         """Ensures the official creator account sharmasreshit@gmail.com is granted the admin role without altering password hash."""
@@ -74,12 +75,8 @@ class Database:
         try:
             self.users.insert_one({
                 'name': name.strip(),
-                'email': email_clean,
-                'password_hash': hashed_pw,
-                'role': role,
-                'created_at': now_iso,
-                'last_login': None,
-                'account_status': 'active'
+                'email': email.strip().lower(),
+                'password_hash': hashed_pw
             })
             return True
         except Exception as e:

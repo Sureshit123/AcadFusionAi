@@ -41,10 +41,10 @@ def admin_required(f):
 @auth_bp.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
-        name = request.form.get('name')
-        email = request.form.get('email')
-        password = request.form.get('password')
-        confirm_password = request.form.get('confirm_password')
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
 
         if not name or not email or not password:
             flash("All fields are required.", "error")
@@ -72,15 +72,15 @@ def login():
         return redirect(url_for('main.hub'))
 
     if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
 
         # 1. Check for Super Admin (from environment variables)
-        env_admin_user = os.environ.get('ADMIN_USERNAME')
-        env_admin_pass = os.environ.get('ADMIN_PASSWORD')
+        env_admin_user = os.environ.get('ADMIN_USERNAME', '').strip()
+        env_admin_pass = os.environ.get('ADMIN_PASSWORD', '').strip()
         
         if env_admin_user and env_admin_pass:
-            if email == env_admin_user and password == env_admin_pass:
+            if email.lower() == env_admin_user.lower() and password == env_admin_pass:
                 session['user_id'] = 'admin_super_user'
                 session['user_name'] = 'Super Admin'
                 session['user_role'] = 'admin'
@@ -88,7 +88,7 @@ def login():
                 return redirect(url_for('main.hub'))
 
         # 2. Check for regular Database User
-        user = db_instance.verify_user(email, password)
+        user = db_instance.verify_user(email.lower(), password)
         if user:
             session['user_id'] = str(user['_id'])
             session['user_name'] = user['name']

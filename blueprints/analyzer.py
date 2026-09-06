@@ -625,6 +625,8 @@ def background_scraper(job_id, usn_list, user_id, is_mock=None, report_settings=
         db_instance.save_analysis_job(job_id, usn_list, JOBS[job_id]['results'], user_id, report_settings)
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         JOBS[job_id]['status'] = f'Error during Excel generation: {str(e)}'
 
 def expand_usn_range(start_usn, count):

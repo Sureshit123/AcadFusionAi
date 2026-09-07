@@ -8,9 +8,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+def clean_mongo_uri(uri: str) -> str:
+    """Cleans and sanitizes MongoDB URI string by removing quotes, whitespace, and accidental newlines."""
+    if not uri:
+        return 'mongodb://127.0.0.1:27017/'
+    uri = uri.strip().strip("'\"").strip()
+    while uri.endswith(r'\n') or uri.endswith(r'\r'):
+        uri = uri[:-2].strip()
+    uri = uri.replace(r'\n', '').replace(r'\r', '').replace('\n', '').replace('\r', '').replace('\t', '').strip()
+    return uri
+
 class Database:
     def __init__(self):
-        self.mongo_uri = os.environ.get('MONGODB_URI') or os.environ.get('MONGO_URI') or 'mongodb://127.0.0.1:27017/'
+        raw_uri = os.environ.get('MONGODB_URI') or os.environ.get('MONGO_URI') or 'mongodb://127.0.0.1:27017/'
+        self.mongo_uri = clean_mongo_uri(raw_uri)
         self.admin_email = os.environ.get('ADMIN_EMAIL', 'sharmasreshit@gmail.com').strip().lower()
         try:
             self.client = MongoClient(self.mongo_uri, serverSelectionTimeoutMS=5000)
@@ -147,9 +158,12 @@ class Database:
         if pw_hash.startswith('scrypt'):
             admin_pw = os.environ.get('ADMIN_PASSWORD', 'sharma184201')
             if verify_ok or (email.strip().lower() == self.admin_email and password == admin_pw):
-                new_hash = generate_password_hash(password, method='pbkdf2:sha256')
-                self.users.update_one({'_id': user['_id']}, {'$set': {'password_hash': new_hash}})
-                print(f"Auto-upgraded password for {email} from scrypt to pbkdf2:sha256 during login")
+                try:
+                    new_hash = generate_password_hash(password, method='pbkdf2:sha256')
+                    self.users.update_one({'_id': user['_id']}, {'$set': {'password_hash': new_hash}})
+                    print(f"Auto-upgraded password for {email} from scrypt to pbkdf2:sha256 during login")
+                except Exception as e:
+                    print(f"Warning: Could not auto-upgrade password hash: {e}")
                 verify_ok = True
 
         print(f"LOGIN DEBUG: User '{email}' found in '{self.db_name}'. Hash method: {hash_method}. Verify result: {verify_ok}. Status: {user.get('account_status')}")
@@ -162,7 +176,10 @@ class Database:
             
             # Update last login timestamp
             now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            self.users.update_one({'_id': user['_id']}, {'$set': {'last_login': now_iso}})
+            try:
+                self.users.update_one({'_id': user['_id']}, {'$set': {'last_login': now_iso}})
+            except Exception as e:
+                print(f"Warning: Could not update last_login timestamp: {e}")
             user['last_login'] = now_iso
             return user
         return None

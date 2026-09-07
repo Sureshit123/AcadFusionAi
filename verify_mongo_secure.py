@@ -4,13 +4,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from models.database import clean_mongo_uri
+
 raw_uri = os.environ.get('MONGODB_URI') or os.environ.get('MONGO_URI')
 
 if not raw_uri:
     print("No MONGODB_URI or MONGO_URI found in environment.")
     exit(1)
 
-mongo_uri = raw_uri.strip().strip("'\"").replace(r'\n', '').replace(r'\r', '').replace('\n', '').replace('\r', '').replace('\t', '').strip()
+mongo_uri = clean_mongo_uri(raw_uri)
 
 try:
     client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)

@@ -9,14 +9,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def clean_mongo_uri(uri: str) -> str:
-    """Cleans and sanitizes MongoDB URI string by removing quotes, whitespace, and accidental newlines."""
+    """Cleans and sanitizes MongoDB URI string by removing quotes, whitespace, accidental newlines, and missing query delimiters."""
     if not uri:
         return 'mongodb://127.0.0.1:27017/'
     uri = uri.strip().strip("'\"").strip()
     while uri.endswith(r'\n') or uri.endswith(r'\r'):
         uri = uri[:-2].strip()
     uri = uri.replace(r'\n', '').replace(r'\r', '').replace('\n', '').replace('\r', '').replace('\t', '').strip()
-    return uri
+    # Auto-heal: space between db name and query parameters instead of '?' (e.g. '.../acadfusion_ai appName=Cluster0...')
+    uri = re.sub(r'/([a-zA-Z0-9_-]+)\s+([a-zA-Z0-9_]+=)', r'/\1?\2', uri)
+    # Auto-heal: accidental spaces around '?', '&', '='
+    uri = re.sub(r'\s*\?\s*', '?', uri)
+    uri = re.sub(r'\s*&\s*', '&', uri)
+    uri = re.sub(r'\s*=\s*', '=', uri)
+    return uri.strip()
 
 class Database:
     def __init__(self):

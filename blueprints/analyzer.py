@@ -299,6 +299,9 @@ def calculate_sgpa_and_map_faculty(student_result, subjects_db):
 
 
 def background_scraper(job_id, usn_list, user_id, is_mock=None, report_settings=None):
+    if is_mock is None:
+        from scraper import is_mock_mode
+        is_mock = is_mock_mode()
     total_count = len(usn_list)
     result_type = report_settings.get('result_type', 'regular') if report_settings else 'regular'
     vtu_url = report_settings.get('vtu_result_link', '') if report_settings else ''
@@ -432,8 +435,8 @@ def background_scraper(job_id, usn_list, user_id, is_mock=None, report_settings=
             JOBS[job_id]['token_dict']       = token_dict
 
             # ── Step 2: Wait for CAPTCHA resolution ──────────────────────────
-            from scraper import VTU_MOCK_MODE
-            effective_mock = is_mock if is_mock is not None else VTU_MOCK_MODE
+            from scraper import is_mock_mode
+            effective_mock = is_mock if is_mock is not None else is_mock_mode()
             if effective_mock:
                 JOBS[job_id]['captcha_solved'] = True
                 JOBS[job_id]['captcha_text']   = 'SIM'
@@ -648,9 +651,9 @@ def dashboard():
     if 'user_id' not in session:
         return redirect(url_for('auth.login'))
     
-    from scraper import VTU_MOCK_MODE
+    from scraper import is_mock_mode
     current_mode = session.get('use_mock')
-    if current_mode is None: current_mode = VTU_MOCK_MODE
+    if current_mode is None: current_mode = is_mock_mode()
     
     return render_template('analyzer/dashboard.html', config={'VTU_MOCK_MODE': current_mode})
 
@@ -726,7 +729,10 @@ def start_analysis():
             deduped.append(uu)
     usn_list = deduped
 
+    from scraper import is_mock_mode
     is_mock = session.get('use_mock')
+    if is_mock is None:
+        is_mock = is_mock_mode()
     JOBS[job_id] = {'excel_file': None, 'captcha_solved': True} 
     thread = threading.Thread(target=background_scraper, args=(job_id, usn_list, session.get('user_id'), is_mock, report_settings))
     thread.daemon = True

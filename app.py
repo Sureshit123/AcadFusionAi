@@ -1,6 +1,10 @@
 import os
-from flask import Flask
 from dotenv import load_dotenv
+
+# Ensure environment variables are loaded immediately before any blueprints or modules
+load_dotenv()
+
+from flask import Flask
 
 # Load blueprints
 from blueprints.auth import auth_bp
@@ -11,8 +15,6 @@ from blueprints.settings import settings_bp
 from blueprints.feedback import feedback_bp
 from blueprints.admin import admin_bp
 from models.database import db_instance
-
-load_dotenv()
 
 def create_app():
     app = Flask(__name__)

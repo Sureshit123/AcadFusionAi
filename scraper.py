@@ -1,4 +1,9 @@
 import os
+from dotenv import load_dotenv
+
+# Load .env variables immediately
+load_dotenv()
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -22,8 +27,13 @@ VTU_INDEX = f"{VTU_BASE}/index.php"
 VTU_RESULT = f"{VTU_BASE}/resultpage.php"
 VTU_SITE_ROOT = "https://results.vtu.ac.in"
 
-# Mock Mode Configuration
-VTU_MOCK_MODE = os.environ.get('VTU_MOCK_MODE', 'false').lower() == 'true'
+# Dynamic Mock Mode Helper
+def is_mock_mode(mock=None):
+    if mock is not None:
+        return bool(mock)
+    return os.environ.get('VTU_MOCK_MODE', 'false').lower() == 'true'
+
+VTU_MOCK_MODE = is_mock_mode()
 
 def _compute_js_token():
     """
@@ -142,7 +152,7 @@ def initialize_scrape(usn, retries=3, mock=None, session=None, vtu_url=None):
     and captures the captcha image. Supports custom VTU result links.
     Returns: (session, base64_captcha, hidden_token, error_msg)
     """
-    is_mock = mock if mock is not None else VTU_MOCK_MODE
+    is_mock = is_mock_mode(mock)
     if is_mock:
         mock_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
         return (session if session else "MOCK_SESSION"), mock_b64, {"name": "MockToken", "value": "123"}, None
@@ -215,8 +225,14 @@ def initialize_scrape(usn, retries=3, mock=None, session=None, vtu_url=None):
             time.sleep(2 ** attempt)
             continue
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            last_err = str(e)
-            logger.warning(f"Timeout/Connection error on attempt {attempt+1} for {usn}: {e}")
+            err_str = str(e)
+            if "10061" in err_str or "actively refused" in err_str.lower() or "connection refused" in err_str.lower():
+                last_err = "VTU Server Connection Refused: The VTU results server (results.vtu.ac.in) is currently offline or rejecting connections. Switch to Demo/Simulation mode or provide an active result link."
+            elif isinstance(e, requests.exceptions.Timeout):
+                last_err = "VTU Server Timeout: results.vtu.ac.in did not respond within timeout limit."
+            else:
+                last_err = err_str
+            logger.warning(f"Timeout/Connection error on attempt {attempt+1} for {usn}: {last_err}")
             time.sleep(2 ** attempt)
             continue
         except Exception as e:
@@ -233,7 +249,7 @@ def complete_scrape(usn, session, token_dict, captcha_text, mock=None, mock_subj
     Step 2: Submits the form with the captcha code and parses the result.
     Applies Result Type Scraping rules (Regular, Re-evaluation, Make-up).
     """
-    is_mock = mock if mock is not None else VTU_MOCK_MODE
+    is_mock = is_mock_mode(mock)
     if is_mock:
         return get_mock_result(usn, mock_subjects)
 

@@ -65,10 +65,11 @@ AcadFusion AI is a comprehensive academic management suite designed to streamlin
    Create a `.env` file in the root directory (see `.env.example`):
    ```env
    MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/acadfusion_ai?retryWrites=true&w=majority
-   FLASK_SECRET_KEY=your_secret_key
-   ADMIN_EMAIL=sharmasreshit@gmail.com
-   ADMIN_PASSWORD=change-me-to-a-strong-password
+   FLASK_SECRET_KEY=<at-least-32-random-characters>
+   ADMIN_EMAIL=admin@example.com
+   ADMIN_PASSWORD=<unique-strong-password>
    ```
+   Never commit `.env`. Hosted deployments must set production credentials securely; production startup fails closed if these settings are missing.
 
 5. **Run the Application**
    ```bash
@@ -87,8 +88,8 @@ Designed to be easily deployed on **Render**, **Railway**, or **Vercel**.
 2. Select **Web Service**.
 3. **Environment**: Python 3.
 4. **Build Command**: `pip install -r requirements.txt`
-5. **Start Command**: `gunicorn app:app` (The project includes a `Procfile` for auto-detection).
-6. **Config**: Add your `.env` variables (`MONGODB_URI`, `ADMIN_EMAIL`, `FLASK_SECRET_KEY`, etc.) in the Dashboard.
+5. **Start Command**: `gunicorn app:app` (or use the included `Procfile`, which sets `APP_ENV=production`).
+6. **Config**: Add `MONGODB_URI`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and a unique `FLASK_SECRET_KEY` of at least 32 characters in the service dashboard. Do not use sample or development credentials.
 
 ---
 

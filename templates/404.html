@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Not Found | AcadFusion AI</title>
+    <meta name="description" content="The page you requested could not be found. Return to AcadFusion AI to continue.">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <main class="not-found-page">
+        <a href="{{ url_for('main.index') }}" class="brand-header" aria-label="AcadFusion AI home">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="" class="brand-logo">
+            <span class="brand-name">AcadFusion AI</span>
+        </a>
+        <p class="not-found-code" aria-hidden="true">404</p>
+        <h1>We couldn't find that page</h1>
+        <p>The address may be incorrect, or the page may have moved. Use the button below to return to AcadFusion AI.</p>
+        <a class="btn not-found-home" href="{{ url_for('main.index') }}">Return Home</a>
+    </main>
+</body>
+</html>

@@ -1,5 +1,7 @@
 import os
+import atexit
 import datetime
+import logging
 import re
 from pymongo import MongoClient
 from bson import ObjectId
@@ -7,6 +9,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 def clean_mongo_uri(uri: str) -> str:
     """Cleans and sanitizes MongoDB URI string by removing quotes, whitespace, accidental newlines, and missing query delimiters."""
@@ -26,11 +29,13 @@ def clean_mongo_uri(uri: str) -> str:
 
 class Database:
     def __init__(self):
+        self.admin_initialization_failed = False
         raw_uri = os.environ.get('MONGODB_URI') or os.environ.get('MONGO_URI') or 'mongodb://127.0.0.1:27017/'
         self.mongo_uri = clean_mongo_uri(raw_uri)
-        self.admin_email = os.environ.get('ADMIN_EMAIL', 'sharmasreshit@gmail.com').strip().lower()
+        self.admin_email = os.environ.get('ADMIN_EMAIL', '').strip().lower()
         try:
             self.client = MongoClient(self.mongo_uri, serverSelectionTimeoutMS=5000)
+            atexit.register(self.client.close)
             
             # Dynamic database selection:
             # 1. Use MONGODB_DB_NAME or MONGO_DB_NAME if explicitly configured
@@ -65,18 +70,20 @@ class Database:
             
             # Ping
             self.client.admin.command('ping')
-            print(f"Successfully connected to MongoDB (database: {self.db_name}).")
+            logger.info("Connected to MongoDB.")
             
             # Ensure creator admin user permissions are initialized
             self.ensure_admin_user()
         except Exception as e:
-            print(f"MongoDB Connection Error: {e}")
+            logger.error("MongoDB connection failed (%s).", type(e).__name__)
             self.users = None
 
     def ensure_admin_user(self):
-        """Ensures creator account matching ADMIN_EMAIL has admin role and pbkdf2:sha256 hash for Render compatibility."""
+        """Provision the explicitly configured administrator account, if credentials are set."""
         if self.users is None or not self.admin_email: return
-        admin_pw = os.environ.get('ADMIN_PASSWORD', 'sharma184201')
+        admin_pw = os.environ.get('ADMIN_PASSWORD', '')
+        if not admin_pw:
+            return
         try:
             user = self.users.find_one({'email': {'$regex': f"^{re.escape(self.admin_email)}$", '$options': 'i'}})
             if user:
@@ -86,30 +93,27 @@ class Database:
                 
                 # Auto-upgrade outdated scrypt hash (incompatible with Render Linux OpenSSL)
                 pw_hash = user.get('password_hash') or user.get('password') or ''
-                if pw_hash.startswith('scrypt') and admin_pw:
+                if pw_hash.startswith('scrypt'):
                     update_fields['password_hash'] = generate_password_hash(admin_pw, method='pbkdf2:sha256')
-                    print(f"Auto-upgraded admin {self.admin_email} password hash from scrypt to pbkdf2:sha256")
                 
                 if update_fields:
                     self.users.update_one({'_id': user['_id']}, {'$set': update_fields})
-                    print(f"Admin account ({self.admin_email}) synced: {list(update_fields.keys())}")
+                    logger.info("Configured administrator account synchronized.")
             else:
-                if admin_pw:
-                    hashed_pw = generate_password_hash(admin_pw, method='pbkdf2:sha256')
-                    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                    self.users.insert_one({
-                        'name': 'Sureshit Sharma',
-                        'email': self.admin_email,
-                        'password_hash': hashed_pw,
-                        'role': 'admin',
-                        'created_at': now_iso,
-                        'account_status': 'active'
-                    })
-                    print(f"Initialized creator admin account: {self.admin_email}")
-                else:
-                    print(f"Admin account ({self.admin_email}) configured. It will receive admin role upon registration.")
+                hashed_pw = generate_password_hash(admin_pw, method='pbkdf2:sha256')
+                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                self.users.insert_one({
+                    'name': 'AcadFusion Administrator',
+                    'email': self.admin_email,
+                    'password_hash': hashed_pw,
+                    'role': 'admin',
+                    'created_at': now_iso,
+                    'account_status': 'active'
+                })
+                logger.info("Configured administrator account initialized.")
         except Exception as e:
-            print(f"Ensure Admin User Error: {e}")
+            self.admin_initialization_failed = True
+            logger.error("Administrator initialization failed (%s).", type(e).__name__)
 
     def get_user_by_email(self, email):
         if self.users is None or not email: return None
@@ -122,14 +126,13 @@ class Database:
         except Exception:
             return self.users.find_one({'_id': str(user_id)})
 
-    def create_user(self, name, email, password, role=None):
+    def create_user(self, name, email, password):
         if self.users is None: return False
         hashed_pw = generate_password_hash(password, method='pbkdf2:sha256')
         email_clean = email.strip().lower() if email else ''
         
-        # Determine role: default 'user', or 'admin' if matching ADMIN_EMAIL or explicitly specified
-        if not role:
-            role = 'admin' if email_clean == self.admin_email else 'user'
+        # Public registration must never grant privileges based on a caller-controlled email.
+        role = 'user'
             
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         try:
@@ -143,41 +146,33 @@ class Database:
             })
             return True
         except Exception as e:
-            print(f"Create User Error: {e}")
+            logger.error("User creation failed (%s).", type(e).__name__)
             return False
 
     def verify_user(self, email, password):
         user = self.get_user_by_email(email)
         if not user:
-            print(f"LOGIN DEBUG: No user found for email '{email}' in database '{self.db_name}'")
             return None
         
         pw_hash = user.get('password_hash') or user.get('password')
         if not pw_hash:
-            print(f"LOGIN DEBUG: User '{email}' has no password_hash or password field. Fields: {list(user.keys())}")
             return None
         
-        hash_method = pw_hash.split(':')[0] if ':' in pw_hash else pw_hash[:10]
         verify_ok = check_password_hash(pw_hash, password)
 
         # Auto-heal/upgrade: If hash is scrypt (unsupported on Render Linux)
         if pw_hash.startswith('scrypt'):
-            admin_pw = os.environ.get('ADMIN_PASSWORD', 'sharma184201')
-            if verify_ok or (email.strip().lower() == self.admin_email and password == admin_pw):
+            if verify_ok:
                 try:
                     new_hash = generate_password_hash(password, method='pbkdf2:sha256')
                     self.users.update_one({'_id': user['_id']}, {'$set': {'password_hash': new_hash}})
-                    print(f"Auto-upgraded password for {email} from scrypt to pbkdf2:sha256 during login")
                 except Exception as e:
-                    print(f"Warning: Could not auto-upgrade password hash: {e}")
+                    logger.warning("Password hash upgrade failed (%s).", type(e).__name__)
                 verify_ok = True
 
-        print(f"LOGIN DEBUG: User '{email}' found in '{self.db_name}'. Hash method: {hash_method}. Verify result: {verify_ok}. Status: {user.get('account_status')}")
-        
         if verify_ok:
             # Block suspended users
             if user.get('account_status') == 'suspended':
-                print(f"Login rejected: Account {email} is suspended.")
                 return None
             
             # Update last login timestamp
@@ -185,7 +180,7 @@ class Database:
             try:
                 self.users.update_one({'_id': user['_id']}, {'$set': {'last_login': now_iso}})
             except Exception as e:
-                print(f"Warning: Could not update last_login timestamp: {e}")
+                logger.warning("Last-login timestamp update failed (%s).", type(e).__name__)
             user['last_login'] = now_iso
             return user
         return None
@@ -203,7 +198,7 @@ class Database:
             )
             return True
         except Exception as e:
-            print(f"Save Timetable Error: {e}")
+            logger.error("Timetable save failed (%s).", type(e).__name__)
             return False
 
     def get_teacher_schedule(self, teacher_name):
@@ -247,7 +242,7 @@ class Database:
             })
             return True
         except Exception as e:
-            print(f"Save Cycle Error: {e}")
+            logger.error("Cycle save failed (%s).", type(e).__name__)
             return False
 
     def get_user_timetable_history(self, user_id, limit=10):
@@ -263,7 +258,7 @@ class Database:
                 results.append(doc)
             return results
         except Exception as e:
-            print(f"Get Timetable History Error: {e}")
+            logger.error("Timetable history retrieval failed (%s).", type(e).__name__)
             return []
 
     def save_analysis_job(self, job_id, usn_list, results, user_id, report_settings=None, status='completed'):
@@ -298,7 +293,7 @@ class Database:
             self.db['analysis_jobs'].insert_one(doc)
             return True
         except Exception as e:
-            print(f"Save Analysis Job Error: {e}")
+            logger.error("Analysis job save failed (%s).", type(e).__name__)
             return False
 
     def get_user_analysis_history(self, user_id, limit=20):
@@ -314,7 +309,7 @@ class Database:
                 results.append(doc)
             return results
         except Exception as e:
-            print(f"Get History Error: {e}")
+            logger.error("Analysis history retrieval failed (%s).", type(e).__name__)
             return []
 
     # --- ADMIN DB METHODS ---
@@ -343,7 +338,7 @@ class Database:
                 user_list.append(doc)
             return user_list
         except Exception as e:
-            print(f"Get All Users Error: {e}")
+            logger.error("User list retrieval failed (%s).", type(e).__name__)
             return []
 
     def reset_user_password(self, user_id, new_password):
@@ -357,7 +352,7 @@ class Database:
             )
             return res.modified_count > 0 or res.matched_count > 0
         except Exception as e:
-            print(f"Reset User Password Error: {e}")
+            logger.error("User password reset failed (%s).", type(e).__name__)
             return False
 
     def update_user_status(self, user_id, status):
@@ -370,7 +365,7 @@ class Database:
             )
             return res.modified_count > 0 or res.matched_count > 0
         except Exception as e:
-            print(f"Update User Status Error: {e}")
+            logger.error("User status update failed (%s).", type(e).__name__)
             return False
 
     def get_platform_stats(self):
@@ -417,7 +412,7 @@ class Database:
                 'recent_analyses': recent_analyses
             }
         except Exception as e:
-            print(f"Get Platform Stats Error: {e}")
+            logger.error("Platform statistics retrieval failed (%s).", type(e).__name__)
             return {}
 
     def get_all_analysis_jobs(self, query_str=None, limit=100):
@@ -440,7 +435,7 @@ class Database:
                 jobs.append(doc)
             return jobs
         except Exception as e:
-            print(f"Get All Analysis Jobs Error: {e}")
+            logger.error("Analysis job retrieval failed (%s).", type(e).__name__)
             return []
 
     def get_analysis_job_results(self, job_id):
@@ -453,7 +448,7 @@ class Database:
             res = self.db['analysis_jobs'].delete_one({'job_id': job_id, 'user_id': user_id})
             return res.deleted_count > 0
         except Exception as e:
-            print(f"Delete Analysis error: {e}")
+            logger.error("Analysis deletion failed (%s).", type(e).__name__)
             return False
 
     def delete_timetable_cycle(self, cycle_id, user_id):
@@ -462,7 +457,7 @@ class Database:
             res = self.db['cycles'].delete_one({'_id': ObjectId(cycle_id), 'user_id': user_id})
             return res.deleted_count > 0
         except Exception as e:
-            print(f"Delete Timetable error: {e}")
+            logger.error("Timetable deletion failed (%s).", type(e).__name__)
             return False
 
     # --- Institution Profile & Configuration CRUD Helpers ---
@@ -474,7 +469,7 @@ class Database:
                 profile['_id'] = str(profile['_id'])
             return profile
         except Exception as e:
-            print(f"Get Profile Error: {e}")
+            logger.error("Profile retrieval failed (%s).", type(e).__name__)
             return None
 
     def save_institution_profile(self, user_id, data):
@@ -486,7 +481,7 @@ class Database:
             )
             return True
         except Exception as e:
-            print(f"Save Profile Error: {e}")
+            logger.error("Profile save failed (%s).", type(e).__name__)
             return False
 
     def get_departments(self, user_id):
@@ -498,7 +493,7 @@ class Database:
                 results.append(doc)
             return results
         except Exception as e:
-            print(f"Get Departments Error: {e}")
+            logger.error("Department retrieval failed (%s).", type(e).__name__)
             return []
 
     def add_department(self, user_id, data):
@@ -507,7 +502,7 @@ class Database:
             res = self.departments.insert_one(data)
             return str(res.inserted_id)
         except Exception as e:
-            print(f"Add Department Error: {e}")
+            logger.error("Department creation failed (%s).", type(e).__name__)
             return None
 
     def delete_department(self, user_id, dept_id):
@@ -515,7 +510,7 @@ class Database:
             res = self.departments.delete_one({'_id': ObjectId(dept_id), 'user_id': user_id})
             return res.deleted_count > 0
         except Exception as e:
-            print(f"Delete Department Error: {e}")
+            logger.error("Department deletion failed (%s).", type(e).__name__)
             return False
 
     def update_department(self, user_id, dept_id, data):
@@ -526,7 +521,7 @@ class Database:
             )
             return res.modified_count > 0 or res.matched_count > 0
         except Exception as e:
-            print(f"Update Department Error: {e}")
+            logger.error("Department update failed (%s).", type(e).__name__)
             return False
 
     def get_faculty_members(self, user_id):
@@ -538,7 +533,7 @@ class Database:
                 results.append(doc)
             return results
         except Exception as e:
-            print(f"Get Faculty Error: {e}")
+            logger.error("Faculty retrieval failed (%s).", type(e).__name__)
             return []
 
     def add_faculty(self, user_id, data):
@@ -547,7 +542,7 @@ class Database:
             res = self.faculty_master.insert_one(data)
             return str(res.inserted_id)
         except Exception as e:
-            print(f"Add Faculty Error: {e}")
+            logger.error("Faculty creation failed (%s).", type(e).__name__)
             return None
 
     def delete_faculty(self, user_id, fac_id):
@@ -555,7 +550,7 @@ class Database:
             res = self.faculty_master.delete_one({'_id': ObjectId(fac_id), 'user_id': user_id})
             return res.deleted_count > 0
         except Exception as e:
-            print(f"Delete Faculty Error: {e}")
+            logger.error("Faculty deletion failed (%s).", type(e).__name__)
             return False
 
     def get_subjects(self, user_id, query_filter=None):
@@ -617,7 +612,7 @@ class Database:
                 results.append(doc)
             return results
         except Exception as e:
-            print(f"Get Subjects Error: {e}")
+            logger.error("Subject retrieval failed (%s).", type(e).__name__)
             return []
 
     def add_subject(self, user_id, data):
@@ -637,7 +632,7 @@ class Database:
             res = self.subject_master.insert_one(data)
             return str(res.inserted_id)
         except Exception as e:
-            print(f"Add Subject Error: {e}")
+            logger.error("Subject creation failed (%s).", type(e).__name__)
             return None
 
     def update_subject(self, user_id, sub_id, data):
@@ -659,7 +654,7 @@ class Database:
             )
             return res.modified_count > 0
         except Exception as e:
-            print(f"Update Subject Error: {e}")
+            logger.error("Subject update failed (%s).", type(e).__name__)
             return False
 
     def delete_subject(self, user_id, sub_id):
@@ -667,7 +662,7 @@ class Database:
             res = self.subject_master.delete_one({'_id': ObjectId(sub_id), 'user_id': user_id})
             return res.deleted_count > 0
         except Exception as e:
-            print(f"Delete Subject Error: {e}")
+            logger.error("Subject deletion failed (%s).", type(e).__name__)
             return False
 
     def get_report_defaults(self, user_id):
@@ -677,7 +672,7 @@ class Database:
                 defaults['_id'] = str(defaults['_id'])
             return defaults
         except Exception as e:
-            print(f"Get Report Defaults Error: {e}")
+            logger.error("Report defaults retrieval failed (%s).", type(e).__name__)
             return None
 
     def save_report_defaults(self, user_id, data):
@@ -689,7 +684,7 @@ class Database:
             )
             return True
         except Exception as e:
-            print(f"Save Report Defaults Error: {e}")
+            logger.error("Report defaults save failed (%s).", type(e).__name__)
             return False
 
     def save_feedback(self, user_id, data):
@@ -710,7 +705,7 @@ class Database:
             res = self.feedbacks.insert_one(doc)
             return str(res.inserted_id)
         except Exception as e:
-            print(f"Save Feedback Error: {e}")
+            logger.error("Feedback save failed (%s).", type(e).__name__)
             return None
 
     def check_existing_feedback(self, user_id, student_usn, subject_code, semester):
@@ -730,7 +725,7 @@ class Database:
             existing = self.feedbacks.find_one(q)
             return existing is not None
         except Exception as e:
-            print(f"Check Feedback Error: {e}")
+            logger.error("Feedback lookup failed (%s).", type(e).__name__)
             return False
 
     def get_feedbacks(self, user_id, filters=None):
@@ -754,7 +749,7 @@ class Database:
                 results.append(doc)
             return results
         except Exception as e:
-            print(f"Get Feedbacks Error: {e}")
+            logger.error("Feedback retrieval failed (%s).", type(e).__name__)
             return []
 
     def get_feedback_analytics(self, user_id, filters=None):
@@ -897,7 +892,7 @@ class Database:
                 'rating_distribution': rating_dist
             }
         except Exception as e:
-            print(f"Feedback Analytics Error: {e}")
+            logger.error("Feedback analytics retrieval failed (%s).", type(e).__name__)
             return {}
 
     # --- Timetable Methods ---
@@ -914,7 +909,7 @@ class Database:
             )
             return True
         except Exception as e:
-            print(f"Save Timetable Error: {e}")
+            logger.error("Timetable save failed (%s).", type(e).__name__)
             return False
 
     def get_teacher_schedule(self, teacher_name):
@@ -957,7 +952,7 @@ class Database:
             })
             return True
         except Exception as e:
-            print(f"Save Cycle Error: {e}")
+            logger.error("Cycle save failed (%s).", type(e).__name__)
             return False
 
     def get_user_timetable_history(self, user_id, limit=10):
@@ -972,7 +967,7 @@ class Database:
                 results.append(doc)
             return results
         except Exception as e:
-            print(f"Get Timetable History Error: {e}")
+            logger.error("Timetable history retrieval failed (%s).", type(e).__name__)
             return []
 
     def delete_timetable_cycle(self, cycle_id, user_id):
@@ -980,10 +975,9 @@ class Database:
             res = self.db['cycles'].delete_one({'_id': ObjectId(cycle_id), 'user_id': user_id})
             return res.deleted_count > 0
         except Exception as e:
-            print(f"Delete Timetable error: {e}")
+            logger.error("Timetable deletion failed (%s).", type(e).__name__)
             return False
 
 
 # Global database instance
 db_instance = Database()
-

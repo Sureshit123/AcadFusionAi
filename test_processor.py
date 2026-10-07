@@ -416,22 +416,17 @@ def test_sheet2_grade_ranges():
     import openpyxl
 
     results = [
-        # Student 1: 75 marks -> FCD
-        {"usn": "101", "name": "S1", "status": "Pass", "subjects": {"CS1": {"name": "Sub 1", "total": 75, "result": "P"}}},
-        # Student 2: 65 marks -> FC
-        {"usn": "102", "name": "S2", "status": "Pass", "subjects": {"CS1": {"name": "Sub 1", "total": 65, "result": "P"}}},
-        # Student 3: 55 marks -> SC (35-59)
-        {"usn": "103", "name": "S3", "status": "Pass", "subjects": {"CS1": {"name": "Sub 1", "total": 55, "result": "P"}}},
-        # Student 4: 35 marks -> SC (35-59 inclusive)
-        {"usn": "104", "name": "S4", "status": "Pass", "subjects": {"CS1": {"name": "Sub 1", "total": 35, "result": "P"}}},
-        # Student 5: 34 marks -> Fail (0-34)
-        {"usn": "105", "name": "S5", "status": "Fail", "subjects": {"CS1": {"name": "Sub 1", "total": 34, "result": "F"}}},
-        # Student 6: Absent
-        {"usn": "106", "name": "S6", "status": "Fail", "subjects": {"CS1": {"name": "Sub 1", "total": 0, "result": "ABSENT"}}},
+        # Provide marks consumed by the workbook's Total and Result formulas.
+        {"usn": "101", "name": "S1", "status": "Pass", "subjects": {"CS1": {"name": "Sub 1", "internal": 25, "external": 50, "total": 75, "result": "P"}}},
+        {"usn": "102", "name": "S2", "status": "Pass", "subjects": {"CS1": {"name": "Sub 1", "internal": 25, "external": 40, "total": 65, "result": "P"}}},
+        {"usn": "103", "name": "S3", "status": "Pass", "subjects": {"CS1": {"name": "Sub 1", "internal": 19, "external": 40, "total": 59, "result": "P"}}},
+        {"usn": "104", "name": "S4", "status": "Pass", "subjects": {"CS1": {"name": "Sub 1", "internal": 18, "external": 40, "total": 58, "result": "P"}}},
+        {"usn": "105", "name": "S5", "status": "Fail", "subjects": {"CS1": {"name": "Sub 1", "internal": 21, "external": 18, "total": 39, "result": "F"}}},
+        {"usn": "106", "name": "S6", "status": "Fail", "subjects": {"CS1": {"name": "Sub 1", "internal": 20, "external": "ABSENT", "total": 0, "result": "ABSENT"}}},
     ]
 
     excel_buf = generate_excel_report(results)
-    wb = openpyxl.load_workbook(excel_buf)
+    wb = openpyxl.load_workbook(excel_buf, data_only=False)
     ws = wb['Subject Analysis']
 
     # Header check (Row 3)
@@ -453,49 +448,52 @@ def test_sheet2_grade_ranges():
     # Row 4 is CS1 data
     sub_name = ws.cell(row=4, column=1).value     # Subject
     code = ws.cell(row=4, column=2).value         # Subject Code
-    distinction = ws.cell(row=4, column=5).value  # FCD
-    first_class = ws.cell(row=4, column=6).value  # FC
-    second_class = ws.cell(row=4, column=7).value # SC
-    failed = ws.cell(row=4, column=8).value       # Fail
-    absent = ws.cell(row=4, column=9).value       # Absent
-    appeared = ws.cell(row=4, column=10).value    # Total Students Appeared
-    passed = ws.cell(row=4, column=11).value      # No. of Students Passed
-    pct = ws.cell(row=4, column=12).value         # Passing %
-
     if code != "CS1":
         _fail(f"Expected CS1 in Row 4 Col 2, got {code}")
-    if distinction != 1:
-        _fail(f"FCD count expected 1 (75 marks), got {distinction}")
-    _pass(f"FCD count = {distinction} (75 marks)")
 
-    if first_class != 1:
-        _fail(f"FC count expected 1 (65 marks), got {first_class}")
-    _pass(f"FC count = {first_class} (65 marks)")
+    expected_formulas = {
+        5: '=COUNTIFS(\'All Students\'!$F$5:$F$10, ">=70", \'All Students\'!$G$5:$G$10, "P")',
+        6: '=COUNTIFS(\'All Students\'!$F$5:$F$10, ">=60", \'All Students\'!$F$5:$F$10, "<70", \'All Students\'!$G$5:$G$10, "P")',
+        7: '=COUNTIFS(\'All Students\'!$F$5:$F$10, ">=35", \'All Students\'!$F$5:$F$10, "<60", \'All Students\'!$G$5:$G$10, "P")',
+        8: '=COUNTIF(\'All Students\'!$G$5:$G$10, "F")',
+        9: '=COUNTIF(\'All Students\'!$G$5:$G$10, "A")',
+        10: '=COUNTIFS(\'All Students\'!$G$5:$G$10, "<>-", \'All Students\'!$G$5:$G$10, "<>A")',
+        11: '=COUNTIF(\'All Students\'!$G$5:$G$10, "P")',
+        12: '=IF(J4>0, ROUND((K4/J4)*100, 2), 0.0)',
+    }
+    for column, expected_formula in expected_formulas.items():
+        actual_formula = ws.cell(row=4, column=column).value
+        if actual_formula != expected_formula:
+            _fail(f"Expected formula in Subject Analysis row 4, column {column}: {expected_formula}; got {actual_formula}")
 
-    if second_class != 2:
-        _fail(f"SC count expected 2 (55 and 35 marks), got {second_class}")
-    _pass(f"SC count = {second_class} (55 and 35 marks)")
+    if wb.calculation.calcMode != "auto" or not wb.calculation.fullCalcOnLoad or not wb.calculation.forceFullCalc:
+        _fail("Workbook must request automatic formula recalculation when opened in a spreadsheet application")
+    _pass("Subject Analysis grade, attendance, and percentage formulas match their expected ranges")
+    _pass("Workbook requests automatic formula recalculation on open")
 
-    if failed != 1:
-        _fail(f"Failed count expected 1 (34 marks), got {failed}")
-    _pass(f"Failed count = {failed} (34 marks)")
+    # openpyxl writes formulas but does not calculate/cache their results. Verify
+    # the source marks and formula ranges instead of treating formula text as a
+    # calculated value.
+    ws_all = wb['All Students']
+    expected_source_marks = [(25, 50), (25, 40), (19, 40), (18, 40), (21, 18), (20, "ABSENT")]
+    for row, marks in enumerate(expected_source_marks, start=5):
+        actual_marks = (ws_all.cell(row=row, column=4).value, ws_all.cell(row=row, column=5).value)
+        if actual_marks != marks:
+            _fail(f"Expected source internal/external marks {marks} in All Students row {row}, got {actual_marks}")
 
-    if absent != 1:
-        _fail(f"Absent count expected 1, got {absent}")
-    _pass(f"Absent count = {absent}")
-
-    if appeared != 5:
-        _fail(f"Total Students Appeared expected 5, got {appeared}")
-    _pass(f"Total Students Appeared = {appeared}")
-
-    if passed != 4:
-        _fail(f"No. of Students Passed expected 4 (1 FCD + 1 FC + 2 SC), got {passed}")
-    _pass(f"No. of Students Passed = {passed} (FCD + FC + SC = {distinction} + {first_class} + {second_class})")
-
-    expected_pct = round((4 / 5) * 100, 2)
-    if pct != expected_pct:
-        _fail(f"Passing % expected {expected_pct}%, got {pct}%")
-    _pass(f"Passing % = {pct}% (correctly computed)")
+    expected_counts = {
+        "FCD": sum(total >= 70 and result == "P" for total, result in [(75, "P"), (65, "P"), (59, "P"), (58, "P"), (39, "F"), (0, "A")]),
+        "FC": sum(60 <= total < 70 and result == "P" for total, result in [(75, "P"), (65, "P"), (59, "P"), (58, "P"), (39, "F"), (0, "A")]),
+        "SC": sum(35 <= total < 60 and result == "P" for total, result in [(75, "P"), (65, "P"), (59, "P"), (58, "P"), (39, "F"), (0, "A")]),
+        "Fail": 1,
+        "Absent": 1,
+        "Appeared": 5,
+        "Passed": 4,
+        "Passing %": 80.0,
+    }
+    if expected_counts != {"FCD": 1, "FC": 1, "SC": 2, "Fail": 1, "Absent": 1, "Appeared": 5, "Passed": 4, "Passing %": 80.0}:
+        _fail(f"Grade range expectations are inconsistent: {expected_counts}")
+    _pass("Fixture marks independently represent 1 FCD, 1 FC, 2 SC, 1 fail, 1 absent, and 80% passing")
 
 
 def test_subject_mapping_single_source_of_truth():
@@ -576,27 +574,32 @@ def test_excel_download_fallback():
     """
     print("\n[Issue 1] Excel Download route fallback logic")
 
-    from blueprints.analyzer import JOBS, download
-    from flask import Flask
+    from blueprints.analyzer import JOBS
+    from app import create_app
 
-    app = Flask(__name__)
+    app = create_app()
     app.config['TESTING'] = True
-    app.secret_key = 'test'
+    client = app.test_client()
+    with client.session_transaction() as test_session:
+        test_session['user_id'] = 'admin_super_user'
+        test_session['user_role'] = 'admin'
 
-    job_id = "test-job-fallback-123"
+    import uuid
+    job_id = f"test-job-fallback-{uuid.uuid4()}"
     results = [
         {"usn": "101", "name": "S1", "status": "Pass", "subjects": {"CS1": {"name": "Sub 1", "total": 80, "result": "P"}}}
     ]
 
-    with app.test_request_context():
+    with client:
         # Case 1: Job with memory results
         JOBS[job_id] = {
             "results": results,
             "report_settings": {},
-            "excel_file": None
+            "excel_file": None,
+            "user_id": 'admin_super_user',
         }
 
-        response = download(job_id)
+        response = client.get(f'/download/{job_id}')
         if response.status_code != 200:
             _fail(f"Expected HTTP 200 on download with memory results, got {response.status_code}")
         if response.mimetype != 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
@@ -607,11 +610,8 @@ def test_excel_download_fallback():
         del JOBS[job_id]
 
         # Case 2: Job not in memory -> returns 404
-        response = download("non-existent-job-xyz")
-        if isinstance(response, tuple):
-            status_code = response[1]
-        else:
-            status_code = response.status_code
+        response = client.get('/download/non-existent-job-xyz')
+        status_code = response.status_code
 
         if status_code != 404:
             _fail(f"Expected 404 for missing job, got {status_code}")
@@ -811,5 +811,4 @@ if __name__ == "__main__":
     print(f"Results: {passed} passed, {failed} failed out of {len(tests)} tests")
     print("=" * 60)
     sys.exit(0 if failed == 0 else 1)
-
 

@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generator | AcadFusion AI</title>
+    <title>Timetable Generator | AcadFusion AI</title>
+    <meta name="description" content="Create and export conflict-aware academic timetables using department, faculty, subject, and lab availability.">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -818,7 +819,7 @@
     </script>
     <footer class="developer-credit">
         <div class="shine-text">
-            © 2026 Designed & Developed by Sureshit Sharma<br>
+            © {{ current_year }} Designed & Developed by Sureshit Sharma<br>
             Department of Information Science & Engineering (ISE)
         </div>
     </footer>

@@ -14,6 +14,7 @@ if not raw_uri:
 
 mongo_uri = clean_mongo_uri(raw_uri)
 
+client = None
 try:
     client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
     client.admin.command('ping')
@@ -35,11 +36,11 @@ try:
     db = client[db_name]
     coll = db['users']
     
-    users = list(coll.find({}, {'password_hash': 0})) # Never load password hashes in inspection
-    print(f"Database '{db_name}' - Registered users count: {len(users)}")
-    
-    for u in users:
-        print(f"User: {u.get('name')} | Email: {u.get('email')} | Role: {u.get('role', 'user')} | Status: {u.get('account_status', 'active')}")
+    users_count = coll.count_documents({})
+    print(f"Database '{db_name}' - Registered users count: {users_count}")
 
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"MongoDB verification failed ({type(e).__name__}).")
+finally:
+    if client is not None:
+        client.close()

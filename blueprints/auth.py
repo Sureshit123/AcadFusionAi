@@ -81,20 +81,24 @@ def login():
         
         if env_admin_user and env_admin_pass:
             if email.lower() == env_admin_user.lower() and password == env_admin_pass:
+                session.clear()
                 session['user_id'] = 'admin_super_user'
                 session['user_name'] = 'Super Admin'
                 session['user_role'] = 'admin'
                 session['logged_in'] = True
+                session.permanent = True
                 return redirect(url_for('main.hub'))
 
         # 2. Check for regular Database User
         user = db_instance.verify_user(email.lower(), password)
         if user:
+            session.clear()
             session['user_id'] = str(user['_id'])
             session['user_name'] = user['name']
             session['user_email'] = user.get('email', '')
             session['user_role'] = user.get('role', 'user')
             session['logged_in'] = True
+            session.permanent = True
             return redirect(url_for('main.hub'))
         else:
             flash("Invalid email/password or account is suspended.", "error")
@@ -105,5 +109,4 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for('auth.login'))
-
 

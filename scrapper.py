@@ -10,6 +10,13 @@ import re
 import urllib3
 import time
 from datetime import datetime
+from marks_utils import (
+    calculate_student_mark_totals,
+    calculate_subject_total,
+    is_missing_external_mark,
+    is_unselected_subject,
+    parse_numeric_mark,
+)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -357,19 +364,26 @@ def _extract_subject_rows_from_container(container):
                 res_flag = col_texts[-1]
 
             if sub_code:
-                try:
-                    tot_val = int(total_str)
-                    int_val = int(internal_str)
-                    ext_val = int(external_str)
-                except ValueError:
-                    tot_val = 0
-                    int_val = 0
-                    ext_val = 0
+                unselected = is_unselected_subject(internal_str)
+                external_missing = is_missing_external_mark(external_str)
+                int_val = "-" if unselected else parse_numeric_mark(internal_str)
+                ext_val = "-" if external_missing else parse_numeric_mark(external_str)
+                tot_val = calculate_subject_total(int_val, ext_val, total_str)
 
                 final_res = res_flag.upper()
-                is_internal_only = (ext_val == 0 and int_val > 0 and final_res in ['P', 'PASS'])
+                is_internal_only = (
+                    not unselected
+                    and not external_missing
+                    and ext_val == 0
+                    and int_val > 0
+                    and final_res in ['P', 'PASS']
+                )
 
-                if 50 < int_val <= 100:
+                if unselected:
+                    final_res = "-"
+                elif external_missing and final_res not in ['A', 'ABSENT']:
+                    final_res = "F"
+                elif 50 < int_val <= 100:
                     final_res = "P"
                 elif int_val <= 50 and ext_val < 18 and res_flag.upper() in ['P', 'PASS'] and not is_internal_only:
                     final_res = "F"
@@ -513,11 +527,16 @@ def parse_vtu_html(usn, html_content, result_type='regular'):
             result["sgpa"] = float(sgpa_matches[0])
 
         # Calculate derived metrics
-        if result["subjects"]:
-            result["total_marks"] = sum(s["total"] for s in result["subjects"].values())
-            result["max_marks"] = len(result["subjects"]) * 100
+        applicable_subjects = [
+            subject for subject in result["subjects"].values()
+            if not is_unselected_subject(subject.get("internal"))
+        ]
+        if applicable_subjects:
+            result["total_marks"], result["max_marks"] = calculate_student_mark_totals(
+                result["subjects"]
+            )
 
-            if any(s["result"] in ['F', 'A', 'FAIL', 'ABSENT'] for s in result["subjects"].values()):
+            if any(s["result"] in ['F', 'A', 'FAIL', 'ABSENT'] for s in applicable_subjects):
                 result["status"] = "Fail"
             else:
                 result["status"] = "Pass"
@@ -527,6 +546,9 @@ def parse_vtu_html(usn, html_content, result_type='regular'):
             else:
                 result["percentage"] = 0
         else:
+            result["total_marks"] = 0
+            result["max_marks"] = 0
+            result["percentage"] = 0
             result["status"] = "No Res"
 
     except Exception as e:

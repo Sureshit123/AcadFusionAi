@@ -1,3 +1,4 @@
+import logging
 import random
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, send_file
 from models.database import db_instance
@@ -10,6 +11,7 @@ timetable_bp = Blueprint('timetable', __name__)
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 SLOTS = ["09:00-10:00", "10:00-11:00", "11:15-12:15", "12:15-01:15", "02:15-03:15", "03:15-04:15", "04:15-05:15"]
+logger = logging.getLogger(__name__)
 
 class DepartmentCycleGenerator:
     def __init__(self, cycle_type, semesters_data, max_physical_labs, schedules_cache=None):
@@ -103,7 +105,6 @@ class DepartmentCycleGenerator:
         for attempt in range(max_attempts):
             result = self._attempt_generate()
             if result[0] is not None:
-                print(f"Algorithm: Solution found on attempt {attempt + 1}")
                 return result
         return None, "All attempts failed. Try reducing constraints or increasing physical labs."
 
@@ -317,7 +318,8 @@ def get_cycle_config(id):
         # Return only the input_config part
         return jsonify(cycle.get('input_config', {}))
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error("Timetable configuration retrieval failed (%s).", type(e).__name__)
+        return jsonify({'error': 'Unable to load this timetable configuration.'}), 500
 
     
     # Save cycle and teachers status
@@ -433,5 +435,5 @@ def download_historical_timetable(id):
         return send_file(output, as_attachment=True, download_name=f"AcadFusion_{cycle_type.capitalize()}_Timetable.xlsx")
         
     except Exception as e:
-        print(f"Historical Download Error: {e}")
+        logger.error("Historical timetable download failed (%s).", type(e).__name__)
         return "Internal Server Error", 500

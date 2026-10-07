@@ -18,6 +18,7 @@ mongo_uri = clean_mongo_uri(raw_uri)
 safe_display = mongo_uri.split('@')[-1].split('?')[0] if '@' in mongo_uri else "localhost / hidden"
 print(f"Testing connection to cluster: {safe_display}")
 
+client = None
 try:
     client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
     client.admin.command('ping')
@@ -47,4 +48,7 @@ try:
     print(f"Registered users count in '{db_name}.users': {users_count}")
 
 except Exception as e:
-    print(f"Connection failed: {e}")
+    print(f"MongoDB verification failed ({type(e).__name__}).")
+finally:
+    if client is not None:
+        client.close()

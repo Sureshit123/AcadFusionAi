@@ -13,6 +13,11 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from models.database import db_instance
+from marks_utils import (
+    calculate_student_mark_totals,
+    is_unselected_subject,
+    parse_numeric_mark,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -27,7 +32,7 @@ def base64_to_tempfile(b64_str):
         temp_file.close()
         return temp_file.name
     except Exception as e:
-        print(f"Error decoding image: {e}")
+        _logger.warning("Department logo decoding failed (%s).", type(e).__name__)
         return None
 
 def generate_pdf_report(results, report_settings, user_id):
@@ -51,7 +56,11 @@ def generate_pdf_report(results, report_settings, user_id):
     college_logo_path = base64_to_tempfile(profile.get('logo_url'))
     
     # 2. Compile stats
-    valid_results = [r for r in results if r.get('status') in ['Pass', 'Fail']]
+    valid_results = [
+        r for r in results
+        if r.get('status') in ['Pass', 'Fail']
+        and calculate_student_mark_totals(r.get('subjects', {}))[1] > 0
+    ]
     total_students = len(results)
     appeared = len(valid_results)
     passed = sum(1 for r in valid_results if r.get('status') == 'Pass')
@@ -79,6 +88,9 @@ def generate_pdf_report(results, report_settings, user_id):
     subject_stats = {}
     for r in valid_results:
         for sub_code, sub_data in r.get('subjects', {}).items():
+            if is_unselected_subject(sub_data.get('internal')):
+                continue
+
             if sub_code not in subject_stats:
                 # Credits and faculty come from sub_data enriched by calculate_sgpa_and_map_faculty.
                 # If not yet enriched (e.g. results loaded from DB before the fix),
@@ -113,7 +125,7 @@ def generate_pdf_report(results, report_settings, user_id):
             subject_stats[sub_code]['appeared'] += 1
             if res_flag in ['P', 'PASS']:
                 subject_stats[sub_code]['passed'] += 1
-            subject_stats[sub_code]['sum_marks'] += int(sub_data.get('total', 0))
+            subject_stats[sub_code]['sum_marks'] += parse_numeric_mark(sub_data.get('total'))
 
     # Calculate subject-wise pass percentages
     for sc, info in subject_stats.items():
@@ -138,6 +150,8 @@ def generate_pdf_report(results, report_settings, user_id):
     grade_bins = {'O': 0, 'A+': 0, 'A': 0, 'B+': 0, 'B': 0, 'C': 0, 'P': 0, 'F': 0}
     for r in valid_results:
         for s in r.get('subjects', {}).values():
+            if is_unselected_subject(s.get('internal')):
+                continue
             res = str(s.get('result', '')).upper()
             tot = s.get('total', 0)
             is_int_only = s.get('is_internal_only', False)
@@ -436,15 +450,8 @@ def generate_pdf_report(results, report_settings, user_id):
     ]
     
     for idx, r in enumerate(results):
-        sub_cnt = len(r.get('subjects', {}))
-        max_marks = r.get('max_marks')
-        if not max_marks:
-            max_marks = sub_cnt * 100
-        
-        total_marks = r.get('total_marks', 0)
-        percentage = r.get('percentage')
-        if percentage is None:
-            percentage = (total_marks / max_marks * 100) if max_marks > 0 else 0.0
+        total_marks, max_marks = calculate_student_mark_totals(r.get('subjects', {}))
+        percentage = (total_marks / max_marks * 100) if max_marks > 0 else 0.0
             
         student_rows.append([
             Paragraph(r.get('usn', ''), table_cell_bold_center),
@@ -461,6 +468,8 @@ def generate_pdf_report(results, report_settings, user_id):
         # Only subjects whose result is genuinely F/A/ABSENT/FAIL are backlogs.
         has_backlog = (r.get('status') == 'Fail')
         for sub_data in r.get('subjects', {}).values():
+            if is_unselected_subject(sub_data.get('internal')):
+                continue
             sub_res = str(sub_data.get('result', '')).upper()
             if sub_res in ['F', 'A', 'ABSENT', 'FAIL']:
                 has_backlog = True
@@ -486,11 +495,8 @@ def generate_pdf_report(results, report_settings, user_id):
     
     valid_student_marks = []
     for r in results:
-        if r.get('status') in ['Pass', 'Fail']:
-            try:
-                tm = int(r.get('total_marks', 0))
-            except:
-                tm = 0
+        tm, max_marks = calculate_student_mark_totals(r.get('subjects', {}))
+        if r.get('status') in ['Pass', 'Fail'] and max_marks > 0:
             valid_student_marks.append((tm, r))
     valid_student_marks.sort(key=lambda x: x[0], reverse=True)
     
@@ -504,13 +510,8 @@ def generate_pdf_report(results, report_settings, user_id):
             break
         prev_marks = tm
         
-        sub_cnt = len(r.get('subjects', {}))
-        max_m = r.get('max_marks')
-        if not max_m:
-            max_m = sub_cnt * 100
-        pct = r.get('percentage')
-        if pct is None:
-            pct = (tm / max_m * 100) if max_m > 0 else 0.0
+        _, max_m = calculate_student_mark_totals(r.get('subjects', {}))
+        pct = (tm / max_m * 100) if max_m > 0 else 0.0
             
         toppers_marks_rows.append([
             Paragraph(str(current_rank), table_cell_bold_center),
@@ -540,7 +541,8 @@ def generate_pdf_report(results, report_settings, user_id):
     
     valid_student_sgpa = []
     for r in results:
-        if r.get('status') in ['Pass', 'Fail']:
+        if (r.get('status') in ['Pass', 'Fail']
+                and calculate_student_mark_totals(r.get('subjects', {}))[1] > 0):
             try:
                 sg = float(r.get('sgpa', 0.0))
             except:
@@ -558,15 +560,7 @@ def generate_pdf_report(results, report_settings, user_id):
             break
         prev_sgpa = sg
         
-        tm = 0
-        try:
-            tm = int(r.get('total_marks', 0))
-        except:
-            pass
-        sub_cnt = len(r.get('subjects', {}))
-        max_m = r.get('max_marks')
-        if not max_m:
-            max_m = sub_cnt * 100
+        tm, max_m = calculate_student_mark_totals(r.get('subjects', {}))
             
         toppers_sgpa_rows.append([
             Paragraph(str(current_rank), table_cell_bold_center),

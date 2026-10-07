@@ -8,6 +8,13 @@ from flask import Blueprint, render_template, request, jsonify, send_file, sessi
 import requests
 from scraper import initialize_scrape, complete_scrape, get_headers
 from processor import generate_excel_report
+from marks_utils import (
+    is_missing_external_mark,
+    is_unselected_subject,
+    calculate_student_mark_totals,
+    calculate_subject_total,
+    parse_numeric_mark,
+)
 from models.database import db_instance
 from blueprints.auth import is_admin
 
@@ -67,7 +74,8 @@ def _is_internal_only_subject(sub_data, matched_sub):
     ext = sub_data.get('external', -1)
     int_ = sub_data.get('internal', 0)
     res = str(sub_data.get('result', '')).strip().upper()
-    if ext == 0 and int_ > 0 and res in ['P', 'PASS']:
+    if (not is_missing_external_mark(ext)
+            and ext == 0 and int_ > 0 and res in ['P', 'PASS']):
         return True
 
     # 5. Subject name keyword match
@@ -120,6 +128,12 @@ def calculate_sgpa_and_map_faculty(student_result, subjects_db):
             name_map[db_name] = db_sub
     
     for sub_code, sub_data in list(student_result['subjects'].items()):
+        if is_unselected_subject(sub_data.get('internal')):
+            sub_data['total'] = 0
+            sub_data['result'] = '-'
+            sub_data['grade_point'] = 0
+            continue
+
         norm_code = sub_code.strip().upper()
         matched_sub = None
         match_method = None
@@ -233,23 +247,24 @@ def calculate_sgpa_and_map_faculty(student_result, subjects_db):
         
         # --- VTU pass/fail logic ---
         res = str(sub_data.get('result', '')).strip().upper()
-        total_marks = sub_data.get('total', 0)
+        total_marks = calculate_subject_total(
+            sub_data.get('internal'),
+            sub_data.get('external'),
+            sub_data.get('total'),
+        )
+        sub_data['total'] = total_marks
         internal = sub_data.get('internal', 0)
         external = sub_data.get('external', 0)
-        
-        try:
-            total_marks = int(total_marks)
-            internal = int(internal)
-            external = int(external)
-        except (ValueError, TypeError):
-            total_marks = 0
-            internal = 0
-            external = 0
+        internal = parse_numeric_mark(internal)
+        external = parse_numeric_mark(external)
         
         if is_internal_only:
             # Internal-only subjects: pass if total >= 40 (no external threshold)
             is_pass = (
-                res not in ['F', 'A', 'ABSENT', 'FAIL']
+                (
+                    res not in ['F', 'A', 'ABSENT', 'FAIL']
+                    or is_missing_external_mark(sub_data.get('external'))
+                )
                 and total_marks >= 40
             )
         else:
@@ -289,14 +304,35 @@ def calculate_sgpa_and_map_faculty(student_result, subjects_db):
     
     # Calculate percentage (marks obtained / max possible marks * 100)
     subjects = student_result.get('subjects', {})
-    if subjects:
-        total_obtained = sum(s.get('total', 0) for s in subjects.values())
-        # Max marks: internal-only subjects count full 100, regular subjects count 100
-        max_possible = len(subjects) * 100
+    applicable_subjects = [
+        subject for subject in subjects.values()
+        if not is_unselected_subject(subject.get('internal'))
+    ]
+    if applicable_subjects:
+        total_obtained, max_possible = calculate_student_mark_totals(subjects)
+        student_result['total_marks'] = total_obtained
+        student_result['max_marks'] = max_possible
         student_result['percentage'] = round((total_obtained / max_possible) * 100, 2) if max_possible > 0 else 0
     else:
+        student_result['total_marks'] = 0
+        student_result['max_marks'] = 0
         student_result['percentage'] = 0
 
+    total_grade_points = 0
+    total_credits = 0
+    for subject in applicable_subjects:
+        credits = parse_numeric_mark(subject.get('credits', 4))
+        total_credits += credits
+        total_grade_points += parse_numeric_mark(subject.get('grade_point')) * credits
+    student_result['sgpa'] = round(total_grade_points / total_credits, 2) if total_credits > 0 else 0.0
+
+    student_result['status'] = (
+        'Fail'
+        if any(str(subject.get('result', '')).upper() in
+               ['F', 'FAIL', 'A', 'ABSENT', 'NE', 'NOT ELIGIBLE', 'N']
+               for subject in applicable_subjects)
+        else 'Pass' if applicable_subjects else 'No Res'
+    )
 
 def background_scraper(job_id, usn_list, user_id, is_mock=None, report_settings=None):
     if is_mock is None:
@@ -628,9 +664,8 @@ def background_scraper(job_id, usn_list, user_id, is_mock=None, report_settings=
         db_instance.save_analysis_job(job_id, usn_list, JOBS[job_id]['results'], user_id, report_settings)
         
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        JOBS[job_id]['status'] = f'Error during Excel generation: {str(e)}'
+        _logger.error("Excel generation failed (%s).", type(e).__name__)
+        JOBS[job_id]['status'] = 'Excel generation failed. Please try again.'
 
 def expand_usn_range(start_usn, count):
     """Expands a starting USN into a sequential list of `count` USNs."""
@@ -701,8 +736,8 @@ def start_analysis():
                             usn_list = valid_usns
                             break
             except Exception as e:
-                _logger.error(f"Failed to read Excel file: {e}")
-                return jsonify({'error': f'Failed to read Excel file: {str(e)}'}), 400
+                _logger.warning("Uploaded Excel file could not be read (%s).", type(e).__name__)
+                return jsonify({'error': 'Unable to read this Excel file. Check the file and try again.'}), 400
         else:
             # TXT or CSV: first token on each non-empty line is the USN
             content = file.read().decode('utf-8', errors='ignore').splitlines()
@@ -879,8 +914,8 @@ def download(job_id):
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
     except Exception as e:
-        _logger.exception(f"Error generating Excel report for job_id '{job_id}': {e}")
-        return f"Error generating Excel report: {str(e)}", 500
+        _logger.error("Excel report download failed (%s).", type(e).__name__)
+        return "Unable to generate the Excel report. Please try again.", 500
 
 @analyzer_bp.route('/api/history')
 def get_history():
@@ -988,7 +1023,8 @@ def download_pdf(job_id):
             mimetype='application/pdf'
         )
     except Exception as e:
-        return f"Error generating PDF report: {str(e)}", 500
+        _logger.error("PDF report download failed (%s).", type(e).__name__)
+        return "Unable to generate the PDF report. Please try again.", 500
 
 @analyzer_bp.route('/download_csv/<job_id>')
 def download_csv(job_id):
@@ -1029,4 +1065,5 @@ def download_csv(job_id):
             mimetype='text/csv'
         )
     except Exception as e:
-        return f"Error generating CSV report: {str(e)}", 500
+        _logger.error("CSV report download failed (%s).", type(e).__name__)
+        return "Unable to generate the CSV report. Please try again.", 500

@@ -13,6 +13,13 @@ import json
 import datetime
 from typing import List, Dict, Any, Union
 from models.database import db_instance
+from marks_utils import (
+    is_missing_external_mark,
+    is_unselected_subject,
+    calculate_student_mark_totals,
+    calculate_subject_total,
+    parse_numeric_mark,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -110,24 +117,21 @@ def update_revaluation_result(
 
     # Recalculate subject total
     is_int_only = sub.get('is_internal_only', False)
-    try:
-        int_num = int(old_internal) if str(old_internal).isdigit() else int(float(old_internal))
-    except Exception:
-        int_num = 0
+    int_num = parse_numeric_mark(old_internal)
+    ext_num = parse_numeric_mark(new_ext_val)
 
-    try:
-        ext_num = int(new_ext_val) if str(new_ext_val).isdigit() else int(float(new_ext_val))
-    except Exception:
-        ext_num = 0
-
-    tot_num = int_num + ext_num
+    unselected = is_unselected_subject(old_internal)
+    tot_num = calculate_subject_total(old_internal, new_ext_val)
     sub['total'] = tot_num
 
     # Recalculate subject result
     ext_str = str(new_ext_val).strip().upper()
     int_str = str(old_internal).strip().upper()
 
-    if ext_str in ['A', 'ABSENT'] or int_str in ['A', 'ABSENT']:
+    if unselected:
+        sub['result'] = '-'
+        sub['grade_point'] = 0
+    elif ext_str in ['A', 'ABSENT'] or int_str in ['A', 'ABSENT']:
         sub['result'] = 'A'
         sub['grade_point'] = 0
     elif is_int_only:
@@ -150,33 +154,7 @@ def update_revaluation_result(
     sub['grade_point'] = gp
 
     # Recalculate student totals
-    total_obtained = sum(
-        int(s.get('total', 0)) for s in subjects.values()
-        if isinstance(s.get('total'), (int, float))
-    )
-    max_possible = len(subjects) * 100
-    target_student['total_marks'] = total_obtained
-    target_student['max_marks'] = max_possible
-    target_student['percentage'] = round((total_obtained / max_possible) * 100, 2) if max_possible > 0 else 0.0
-
-    # Recalculate SGPA
-    tot_credits = 0
-    tot_gp_credits = 0
-    for s in subjects.values():
-        cr = int(s.get('credits', 4))
-        gp_val = s.get('grade_point', 0)
-        tot_credits += cr
-        tot_gp_credits += gp_val * cr
-    target_student['sgpa'] = round(tot_gp_credits / tot_credits, 2) if tot_credits > 0 else 0.0
-
-    # Recalculate backlogs & overall status
-    has_backlog = False
-    for s in subjects.values():
-        r_flag = str(s.get('result', '')).upper()
-        if r_flag in ['F', 'FAIL', 'A', 'ABSENT', 'NE', 'NOT ELIGIBLE', 'N']:
-            has_backlog = True
-            break
-    target_student['status'] = 'Fail' if has_backlog else 'Pass'
+    _recalculate_student_metrics(target_student)
 
     # Secondary verification check: Internal marks remain pristine
     assert sub['internal'] == old_internal, "Internal mark mutation detected post-calculation!"
@@ -202,20 +180,20 @@ def update_student_marks(student_result, subject_code, internal=None, external=N
         
     int_val = sub.get('internal', 0)
     ext_val = sub.get('external', 0)
-    try:
-        int_num = int(int_val) if isinstance(int_val, (int, float, str)) and str(int_val).isdigit() else 0
-        ext_num = int(ext_val) if isinstance(ext_val, (int, float, str)) and str(ext_val).isdigit() else 0
-        tot_num = int_num + ext_num
-        sub['total'] = tot_num
-    except Exception:
-        tot_num = 0
-        sub['total'] = tot_num
+    unselected = is_unselected_subject(int_val)
+    int_num = parse_numeric_mark(int_val)
+    ext_num = parse_numeric_mark(ext_val)
+    tot_num = calculate_subject_total(int_val, ext_val)
+    sub['total'] = tot_num
         
     is_int_only = sub.get('is_internal_only', False)
     ext_str = str(ext_val).strip().upper()
     int_str = str(int_val).strip().upper()
     
-    if ext_str in ['A', 'ABSENT'] or int_str in ['A', 'ABSENT']:
+    if unselected:
+        sub['result'] = '-'
+        sub['grade_point'] = 0
+    elif ext_str in ['A', 'ABSENT'] or int_str in ['A', 'ABSENT']:
         sub['result'] = 'A'
         sub['grade_point'] = 0
     elif is_int_only:
@@ -236,29 +214,42 @@ def update_student_marks(student_result, subject_code, internal=None, external=N
         gp = 0
     sub['grade_point'] = gp
     
-    total_obtained = sum(int(s.get('total', 0)) for s in subjects.values() if isinstance(s.get('total'), (int, float)))
-    max_possible = len(subjects) * 100
+    _recalculate_student_metrics(student_result)
+    return student_result
+
+
+def _recalculate_student_metrics(student_result):
+    applicable_subjects = [
+        subject for subject in student_result.get('subjects', {}).values()
+        if not is_unselected_subject(subject.get('internal'))
+    ]
+    total_obtained, max_possible = calculate_student_mark_totals(
+        student_result.get('subjects', {})
+    )
     student_result['total_marks'] = total_obtained
     student_result['max_marks'] = max_possible
-    student_result['percentage'] = round((total_obtained / max_possible) * 100, 2) if max_possible > 0 else 0.0
-    
-    tot_credits = 0
-    tot_gp_credits = 0
-    for s in subjects.values():
-        cr = int(s.get('credits', 4))
-        gp_val = s.get('grade_point', 0)
-        tot_credits += cr
-        tot_gp_credits += gp_val * cr
-    student_result['sgpa'] = round(tot_gp_credits / tot_credits, 2) if tot_credits > 0 else 0.0
-    
-    has_backlog = False
-    for s in subjects.values():
-        r_flag = str(s.get('result', '')).upper()
-        if r_flag in ['F', 'FAIL', 'A', 'ABSENT', 'NE', 'NOT ELIGIBLE', 'N']:
-            has_backlog = True
-            break
-    student_result['status'] = 'Fail' if has_backlog else 'Pass'
-    return student_result
+    student_result['percentage'] = (
+        round(total_obtained / max_possible * 100, 2) if max_possible else 0.0
+    )
+
+    total_credits = 0
+    weighted_grade_points = 0
+    for subject in applicable_subjects:
+        credits = parse_numeric_mark(subject.get('credits', 4), default=4)
+        total_credits += credits
+        weighted_grade_points += parse_numeric_mark(subject.get('grade_point')) * credits
+    student_result['sgpa'] = (
+        round(weighted_grade_points / total_credits, 2) if total_credits else 0.0
+    )
+
+    has_backlog = any(
+        str(subject.get('result', '')).upper()
+        in ['F', 'FAIL', 'A', 'ABSENT', 'NE', 'NOT ELIGIBLE', 'N']
+        for subject in applicable_subjects
+    )
+    student_result['status'] = (
+        'Fail' if has_backlog else 'Pass' if applicable_subjects else 'No Res'
+    )
 
 
 def update_result_in_dataset(results, usn, subject_code, internal=None, external=None, is_internal_only=None):
@@ -380,9 +371,20 @@ def generate_excel_report(results, report_settings=None, user_id=None):
 
     all_subject_codes = sorted(list(all_subjects_meta.keys()))
     num_students = len(results)
-    max_marks_per_student = len(all_subject_codes) * 100 if all_subject_codes else 100
     r_start = 5
     r_end = 5 + num_students - 1 if num_students > 0 else 5
+
+    def _max_marks_formula(rank_helper_col, output_row):
+        match_expr = (
+            f'MATCH(A{output_row}, \'All Students\'!'
+            f'${rank_helper_col}$5:${rank_helper_col}${r_end}, 0)'
+        )
+        terms = [
+            f'IF(ISNUMBER(INDEX(\'All Students\'!${subject_col_map[code]["int"]}$5:'
+            f'${subject_col_map[code]["int"]}${r_end}, {match_expr})), 100, 0)'
+            for code in all_subject_codes
+        ]
+        return f'=IFERROR({" + ".join(terms) if terms else "0"}, "-")'
 
     # =========================================================================
     # --- SHEET 3: ALL STUDENTS (MASTER SHEET) ---
@@ -509,10 +511,15 @@ def generate_excel_report(results, report_settings=None, user_id=None):
             if sub_data:
                 raw_int = sub_data.get('internal', 0)
                 raw_ext = sub_data.get('external', 0)
-                try: int_val = int(raw_int) if str(raw_int).isdigit() else raw_int
-                except Exception: int_val = raw_int
-                try: ext_val = int(raw_ext) if str(raw_ext).isdigit() else raw_ext
-                except Exception: ext_val = raw_ext
+                if is_unselected_subject(raw_int):
+                    int_val = "-"
+                    ext_val = "-"
+                else:
+                    int_val = parse_numeric_mark(raw_int, default=raw_int)
+                    ext_val = (
+                        "-" if is_missing_external_mark(raw_ext)
+                        else parse_numeric_mark(raw_ext, default=raw_ext)
+                    )
             else:
                 int_val = "-"
                 ext_val = "-"
@@ -521,14 +528,14 @@ def generate_excel_report(results, report_settings=None, user_id=None):
             ws_all.cell(row=r_num, column=sub_col_idx + 1, value=ext_val).border = thin_border
 
             # Dynamic Subject Total Formula
-            tot_formula = f'=IF(AND({c_int}{r_num}="-", {c_ext}{r_num}="-"), "-", IF(ISNUMBER({c_int}{r_num}), {c_int}{r_num}, 0) + IF(ISNUMBER({c_ext}{r_num}), {c_ext}{r_num}, 0))'
+            tot_formula = f'=IF({c_int}{r_num}="-", "-", IF(ISNUMBER({c_int}{r_num}), {c_int}{r_num}, 0) + IF(ISNUMBER({c_ext}{r_num}), {c_ext}{r_num}, 0))'
             ws_all.cell(row=r_num, column=sub_col_idx + 2, value=tot_formula).border = thin_border
 
             # Dynamic Subject Result Formula (VTU Passing Rules)
             if is_int_only:
-                res_formula = f'=IF(AND({c_int}{r_num}="-", {c_ext}{r_num}="-"), "-", IF(OR({c_int}{r_num}="A", {c_ext}{r_num}="A", {c_ext}{r_num}="ABSENT"), "A", IF(AND(ISNUMBER({c_tot}{r_num}), {c_tot}{r_num}>=40), "P", "F")))'
+                res_formula = f'=IF({c_int}{r_num}="-", "-", IF(OR({c_int}{r_num}="A", {c_ext}{r_num}="A", {c_ext}{r_num}="ABSENT"), "A", IF(AND(ISNUMBER({c_tot}{r_num}), {c_tot}{r_num}>=40), "P", "F")))'
             else:
-                res_formula = f'=IF(AND({c_int}{r_num}="-", {c_ext}{r_num}="-"), "-", IF(OR({c_int}{r_num}="A", {c_ext}{r_num}="A", {c_ext}{r_num}="ABSENT"), "A", IF(AND(ISNUMBER({c_ext}{r_num}), {c_ext}{r_num}>=18, ISNUMBER({c_tot}{r_num}), {c_tot}{r_num}>=40), "P", "F")))'
+                res_formula = f'=IF({c_int}{r_num}="-", "-", IF(OR({c_int}{r_num}="A", {c_ext}{r_num}="A", {c_ext}{r_num}="ABSENT"), "A", IF(AND(ISNUMBER({c_ext}{r_num}), {c_ext}{r_num}>=18, ISNUMBER({c_tot}{r_num}), {c_tot}{r_num}>=40), "P", "F")))'
             ws_all.cell(row=r_num, column=sub_col_idx + 3, value=res_formula).border = thin_border
 
             tot_cells.append(f'{c_tot}{r_num}')
@@ -561,11 +568,11 @@ def generate_excel_report(results, report_settings=None, user_id=None):
 
         # Derived Class Classification
         absent_checks = ", ".join([f'AND({rc}<>"-", {rc}="A")' for rc in res_cells]) if res_cells else 'FALSE'
-        class_formula = f'=IF(OR({absent_checks}), "Absent", IF({col_backlogs}{r_num}>0, "Fail Class", IF({col_sgpa}{r_num}>=7.75, "Distinction", IF({col_sgpa}{r_num}>=6.75, "First Class", IF({col_sgpa}{r_num}>=5.75, "Second Class", "Pass Class")))))'
+        class_formula = f'=IF(({enrolled_cnt_expr})=0, "No Res", IF(OR({absent_checks}), "Absent", IF({col_backlogs}{r_num}>0, "Fail Class", IF({col_sgpa}{r_num}>=7.75, "Distinction", IF({col_sgpa}{r_num}>=6.75, "First Class", IF({col_sgpa}{r_num}>=5.75, "Second Class", "Pass Class"))))))'
         ws_all.cell(row=r_num, column=curr_col + 4, value=class_formula).border = thin_border
 
         # Derived Student Result Status
-        result_status_formula = f'=IF(OR({absent_checks}), "Absent", IF({col_backlogs}{r_num}>0, "Fail", "Pass"))'
+        result_status_formula = f'=IF(({enrolled_cnt_expr})=0, "No Res", IF(OR({absent_checks}), "Absent", IF({col_backlogs}{r_num}>0, "Fail", "Pass")))'
         ws_all.cell(row=r_num, column=curr_col + 5, value=result_status_formula).border = thin_border
 
         # Hidden Helper: Topper Rank (Marks) with deterministic tie-breaking for passing students
@@ -586,15 +593,21 @@ def generate_excel_report(results, report_settings=None, user_id=None):
 
         # Hidden Helper: Complete Class Rank (Marks)
         rank_all_marks_formula = (
-            f'=COUNTIF(${col_grand_total}$5:${col_grand_total}${r_end}, ">" & {col_grand_total}{r_num}) + '
-            f'COUNTIF(${col_grand_total}$5:${col_grand_total}{r_num}, "=" & {col_grand_total}{r_num})'
+            f'=IF(({enrolled_cnt_expr})=0, "-", '
+            f'COUNTIFS(${col_grand_total}$5:${col_grand_total}${r_end}, ">" & {col_grand_total}{r_num}, '
+            f'${col_result}$5:${col_result}${r_end}, "<>No Res") + '
+            f'COUNTIFS(${col_grand_total}$5:${col_grand_total}{r_num}, "=" & {col_grand_total}{r_num}, '
+            f'${col_result}$5:${col_result}{r_num}, "<>No Res"))'
         )
         ws_all.cell(row=r_num, column=curr_col + 8, value=rank_all_marks_formula).border = thin_border
 
         # Hidden Helper: Complete Class Rank (SGPA)
         rank_all_sgpa_formula = (
-            f'=COUNTIF(${col_sgpa}$5:${col_sgpa}${r_end}, ">" & {col_sgpa}{r_num}) + '
-            f'COUNTIF(${col_sgpa}$5:${col_sgpa}{r_num}, "=" & {col_sgpa}{r_num})'
+            f'=IF(({enrolled_cnt_expr})=0, "-", '
+            f'COUNTIFS(${col_sgpa}$5:${col_sgpa}${r_end}, ">" & {col_sgpa}{r_num}, '
+            f'${col_result}$5:${col_result}${r_end}, "<>No Res") + '
+            f'COUNTIFS(${col_sgpa}$5:${col_sgpa}{r_num}, "=" & {col_sgpa}{r_num}, '
+            f'${col_result}$5:${col_result}{r_num}, "<>No Res"))'
         )
         ws_all.cell(row=r_num, column=curr_col + 9, value=rank_all_sgpa_formula).border = thin_border
 
@@ -666,7 +679,7 @@ def generate_excel_report(results, report_settings=None, user_id=None):
 
     overall_metrics = [
         ("Total Scraped Students", f"=COUNTA('All Students'!$B$5:$B${r_end})" if num_students > 0 else 0),
-        ("Students Appeared", f'=COUNTIF(\'All Students\'!${col_result}$5:${col_result}${r_end}, "<>Absent")' if num_students > 0 else 0),
+        ("Students Appeared", f'=COUNTIFS(\'All Students\'!${col_result}$5:${col_result}${r_end}, "<>Absent", \'All Students\'!${col_result}$5:${col_result}${r_end}, "<>No Res")' if num_students > 0 else 0),
         ("Passed Students", f'=COUNTIF(\'All Students\'!${col_result}$5:${col_result}${r_end}, "Pass")' if num_students > 0 else 0),
         ("Failed Students", f'=COUNTIF(\'All Students\'!${col_result}$5:${col_result}${r_end}, "Fail")' if num_students > 0 else 0),
         ("Passing Percentage", f'=IF(B8>0, ROUND((B9/B8)*100, 2), 0)'),
@@ -802,7 +815,7 @@ def generate_excel_report(results, report_settings=None, user_id=None):
         if num_students > 0:
             ws_top_marks.cell(row=r_idx, column=2, value=f'=IFERROR(INDEX(\'All Students\'!$B$5:$B${r_end}, MATCH(A{r_idx}, \'All Students\'!${col_rank_marks}$5:${col_rank_marks}${r_end}, 0)), "-")').border = thin_border
             ws_top_marks.cell(row=r_idx, column=3, value=f'=IFERROR(INDEX(\'All Students\'!$C$5:$C${r_end}, MATCH(A{r_idx}, \'All Students\'!${col_rank_marks}$5:${col_rank_marks}${r_end}, 0)), "-")').border = thin_border
-            ws_top_marks.cell(row=r_idx, column=4, value=max_marks_per_student).border = thin_border
+            ws_top_marks.cell(row=r_idx, column=4, value=_max_marks_formula(col_rank_marks, r_idx)).border = thin_border
             ws_top_marks.cell(row=r_idx, column=5, value=f'=IFERROR(INDEX(\'All Students\'!${col_grand_total}$5:${col_grand_total}${r_end}, MATCH(A{r_idx}, \'All Students\'!${col_rank_marks}$5:${col_rank_marks}${r_end}, 0)), "-")').border = thin_border
             ws_top_marks.cell(row=r_idx, column=6, value=f'=IFERROR(INDEX(\'All Students\'!${col_percentage}$5:${col_percentage}${r_end}, MATCH(A{r_idx}, \'All Students\'!${col_rank_marks}$5:${col_rank_marks}${r_end}, 0)), "-")').border = thin_border
             ws_top_marks.cell(row=r_idx, column=7, value=f'=IFERROR(INDEX(\'All Students\'!${col_result}$5:${col_result}${r_end}, MATCH(A{r_idx}, \'All Students\'!${col_rank_marks}$5:${col_rank_marks}${r_end}, 0)), "-")').border = thin_border
@@ -843,7 +856,7 @@ def generate_excel_report(results, report_settings=None, user_id=None):
             ws_top_sgpa.cell(row=r_idx, column=2, value=f'=IFERROR(INDEX(\'All Students\'!$B$5:$B${r_end}, MATCH(A{r_idx}, \'All Students\'!${col_rank_sgpa}$5:${col_rank_sgpa}${r_end}, 0)), "-")').border = thin_border
             ws_top_sgpa.cell(row=r_idx, column=3, value=f'=IFERROR(INDEX(\'All Students\'!$C$5:$C${r_end}, MATCH(A{r_idx}, \'All Students\'!${col_rank_sgpa}$5:${col_rank_sgpa}${r_end}, 0)), "-")').border = thin_border
             ws_top_sgpa.cell(row=r_idx, column=4, value=f'=IFERROR(INDEX(\'All Students\'!${col_sgpa}$5:${col_sgpa}${r_end}, MATCH(A{r_idx}, \'All Students\'!${col_rank_sgpa}$5:${col_rank_sgpa}${r_end}, 0)), "-")').border = thin_border
-            ws_top_sgpa.cell(row=r_idx, column=5, value=max_marks_per_student).border = thin_border
+            ws_top_sgpa.cell(row=r_idx, column=5, value=_max_marks_formula(col_rank_sgpa, r_idx)).border = thin_border
             ws_top_sgpa.cell(row=r_idx, column=6, value=f'=IFERROR(INDEX(\'All Students\'!${col_grand_total}$5:${col_grand_total}${r_end}, MATCH(A{r_idx}, \'All Students\'!${col_rank_sgpa}$5:${col_rank_sgpa}${r_end}, 0)), "-")').border = thin_border
             ws_top_sgpa.cell(row=r_idx, column=7, value=f'=IFERROR(INDEX(\'All Students\'!${col_result}$5:${col_result}${r_end}, MATCH(A{r_idx}, \'All Students\'!${col_rank_sgpa}$5:${col_rank_sgpa}${r_end}, 0)), "-")').border = thin_border
         else:
@@ -884,7 +897,7 @@ def generate_excel_report(results, report_settings=None, user_id=None):
             ws_backlogs.cell(row=bl_row, column=1, value=f'=IF(ISNUMBER(MATCH({k}, \'All Students\'!${col_backlog_idx}$5:${col_backlog_idx}${r_end}, 0)), {k}, "")').border = thin_border
             ws_backlogs.cell(row=bl_row, column=2, value=f'=IFERROR(INDEX(\'All Students\'!$B$5:$B${r_end}, MATCH({k}, \'All Students\'!${col_backlog_idx}$5:${col_backlog_idx}${r_end}, 0)), "")').border = thin_border
             ws_backlogs.cell(row=bl_row, column=3, value=f'=IFERROR(INDEX(\'All Students\'!$C$5:$C${r_end}, MATCH({k}, \'All Students\'!${col_backlog_idx}$5:${col_backlog_idx}${r_end}, 0)), "")').border = thin_border
-            ws_backlogs.cell(row=bl_row, column=4, value=f'=IF(B{bl_row}="", "", {max_marks_per_student})').border = thin_border
+            ws_backlogs.cell(row=bl_row, column=4, value=f'=IF(B{bl_row}="", "", {_max_marks_formula(col_backlog_idx, bl_row)[1:]})').border = thin_border
             ws_backlogs.cell(row=bl_row, column=5, value=f'=IFERROR(INDEX(\'All Students\'!${col_grand_total}$5:${col_grand_total}${r_end}, MATCH({k}, \'All Students\'!${col_backlog_idx}$5:${col_backlog_idx}${r_end}, 0)), "")').border = thin_border
             ws_backlogs.cell(row=bl_row, column=6, value=f'=IFERROR(INDEX(\'All Students\'!${col_percentage}$5:${col_percentage}${r_end}, MATCH({k}, \'All Students\'!${col_backlog_idx}$5:${col_backlog_idx}${r_end}, 0)), "")').border = thin_border
             ws_backlogs.cell(row=bl_row, column=7, value=f'=IFERROR(INDEX(\'All Students\'!${col_sgpa}$5:${col_sgpa}${r_end}, MATCH({k}, \'All Students\'!${col_backlog_idx}$5:${col_backlog_idx}${r_end}, 0)), "")').border = thin_border
@@ -932,7 +945,7 @@ def generate_excel_report(results, report_settings=None, user_id=None):
         if num_students > 0:
             ws_rank_marks.cell(row=rm_row, column=2, value=f'=IFERROR(INDEX(\'All Students\'!$B$5:$B${r_end}, MATCH(A{rm_row}, \'All Students\'!${col_rank_all_marks}$5:${col_rank_all_marks}${r_end}, 0)), "-")').border = thin_border
             ws_rank_marks.cell(row=rm_row, column=3, value=f'=IFERROR(INDEX(\'All Students\'!$C$5:$C${r_end}, MATCH(A{rm_row}, \'All Students\'!${col_rank_all_marks}$5:${col_rank_all_marks}${r_end}, 0)), "-")').border = thin_border
-            ws_rank_marks.cell(row=rm_row, column=4, value=max_marks_per_student).border = thin_border
+            ws_rank_marks.cell(row=rm_row, column=4, value=_max_marks_formula(col_rank_all_marks, rm_row)).border = thin_border
             ws_rank_marks.cell(row=rm_row, column=5, value=f'=IFERROR(INDEX(\'All Students\'!${col_grand_total}$5:${col_grand_total}${r_end}, MATCH(A{rm_row}, \'All Students\'!${col_rank_all_marks}$5:${col_rank_all_marks}${r_end}, 0)), "-")').border = thin_border
             ws_rank_marks.cell(row=rm_row, column=6, value=f'=IFERROR(INDEX(\'All Students\'!${col_percentage}$5:${col_percentage}${r_end}, MATCH(A{rm_row}, \'All Students\'!${col_rank_all_marks}$5:${col_rank_all_marks}${r_end}, 0)), "-")').border = thin_border
             ws_rank_marks.cell(row=rm_row, column=7, value=f'=IFERROR(INDEX(\'All Students\'!${col_result}$5:${col_result}${r_end}, MATCH(A{rm_row}, \'All Students\'!${col_rank_all_marks}$5:${col_rank_all_marks}${r_end}, 0)), "-")').border = thin_border
@@ -976,7 +989,7 @@ def generate_excel_report(results, report_settings=None, user_id=None):
             ws_rank_sgpa.cell(row=rs_row, column=2, value=f'=IFERROR(INDEX(\'All Students\'!$B$5:$B${r_end}, MATCH(A{rs_row}, \'All Students\'!${col_rank_all_sgpa}$5:${col_rank_all_sgpa}${r_end}, 0)), "-")').border = thin_border
             ws_rank_sgpa.cell(row=rs_row, column=3, value=f'=IFERROR(INDEX(\'All Students\'!$C$5:$C${r_end}, MATCH(A{rs_row}, \'All Students\'!${col_rank_all_sgpa}$5:${col_rank_all_sgpa}${r_end}, 0)), "-")').border = thin_border
             ws_rank_sgpa.cell(row=rs_row, column=4, value=f'=IFERROR(INDEX(\'All Students\'!${col_sgpa}$5:${col_sgpa}${r_end}, MATCH(A{rs_row}, \'All Students\'!${col_rank_all_sgpa}$5:${col_rank_all_sgpa}${r_end}, 0)), "-")').border = thin_border
-            ws_rank_sgpa.cell(row=rs_row, column=5, value=max_marks_per_student).border = thin_border
+            ws_rank_sgpa.cell(row=rs_row, column=5, value=_max_marks_formula(col_rank_all_sgpa, rs_row)).border = thin_border
             ws_rank_sgpa.cell(row=rs_row, column=6, value=f'=IFERROR(INDEX(\'All Students\'!${col_grand_total}$5:${col_grand_total}${r_end}, MATCH(A{rs_row}, \'All Students\'!${col_rank_all_sgpa}$5:${col_rank_all_sgpa}${r_end}, 0)), "-")').border = thin_border
             ws_rank_sgpa.cell(row=rs_row, column=7, value=f'=IFERROR(INDEX(\'All Students\'!${col_result}$5:${col_result}${r_end}, MATCH(A{rs_row}, \'All Students\'!${col_rank_all_sgpa}$5:${col_rank_all_sgpa}${r_end}, 0)), "-")').border = thin_border
         else:
@@ -1053,6 +1066,9 @@ def generate_csv_report(results, report_settings=None, user_id=None):
             })
         else:
             for code, sub_data in subjects.items():
+                if is_unselected_subject(sub_data.get('internal')):
+                    continue
+
                 credits = sub_data.get('credits')
                 faculty = sub_data.get('faculty')
 
@@ -1091,7 +1107,11 @@ def generate_csv_report(results, report_settings=None, user_id=None):
                     'Faculty Name': faculty,
                     'Internal': sub_data.get('internal', 0),
                     'External': sub_data.get('external', 0),
-                    'Total': sub_data.get('total', 0),
+                    'Total': calculate_subject_total(
+                        sub_data.get('internal'),
+                        sub_data.get('external'),
+                        sub_data.get('total'),
+                    ),
                     'Subject Result': sub_data.get('result', ''),
                     'SGPA': overall_sgpa,
                     'Student Status': overall_status

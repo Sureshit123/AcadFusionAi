@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard | AcadFusion AI</title>
+    <title>VTU Result Analyzer | AcadFusion AI</title>
+    <meta name="description" content="Analyze VTU results by USN range or spreadsheet and generate detailed student performance reports.">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -219,13 +220,13 @@
             
             <div class="action-buttons-group" style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem;">
                 <div style="display: flex; gap: 0.5rem; width: 100%;">
-                    <a id="downloadBtn" class="btn" href="#" style="flex: 1; display: none; background: #16a34a; padding: 0.5rem; font-size: 0.8rem;">
+                    <a id="downloadBtn" class="btn" style="flex: 1; display: none; background: #16a34a; padding: 0.5rem; font-size: 0.8rem;">
                         📊 Excel Report
                     </a>
-                    <a id="downloadPdfBtn" class="btn" href="#" style="flex: 1; display: none; background: #7c3aed; padding: 0.5rem; font-size: 0.8rem;">
+                    <a id="downloadPdfBtn" class="btn" style="flex: 1; display: none; background: #7c3aed; padding: 0.5rem; font-size: 0.8rem;">
                         📄 PDF Report
                     </a>
-                    <a id="downloadCsvBtn" class="btn" href="#" style="flex: 1; display: none; background: #0284c7; padding: 0.5rem; font-size: 0.8rem;">
+                    <a id="downloadCsvBtn" class="btn" style="flex: 1; display: none; background: #0284c7; padding: 0.5rem; font-size: 0.8rem;">
                         📑 CSV Flat
                     </a>
                 </div>
@@ -415,7 +416,7 @@
 
     <footer class="developer-credit">
         <div class="shine-text" style="font-size: 0.9rem;">
-            &copy; 2026 Designed & Developed by Sureshit Sharma | Under the guidance of Prof. A. A. Javaji<br>
+            &copy; {{ current_year }} Designed & Developed by Sureshit Sharma | Under the guidance of Prof. A. A. Javaji<br>
             Department of Information Science & Engineering (ISE)
         </div>
     </footer>

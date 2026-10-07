@@ -30,6 +30,7 @@
         .nav-links a { color: var(--text-secondary, #94a3b8); text-decoration: none; font-size: 0.85rem; font-weight: 500; padding: 0.4rem 0.9rem; border-radius: 8px; border: 1px solid transparent; transition: all 0.2s; }
         .nav-links a:hover { border-color: #a78bfa; color: #a78bfa; }
         .nav-links a.active { background: rgba(167,139,250,0.12); color: #a78bfa; border-color: rgba(167,139,250,0.3); }
+        .menu-toggle { display: none; min-width: 44px; min-height: 44px; border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; background: rgba(255,255,255,0.05); color: #f1f5f9; cursor: pointer; }
 
         h1 { font-size: 1.8rem; font-weight: 800; background: linear-gradient(135deg, #f1f5f9, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.3rem; }
         .subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 2rem; }
@@ -56,7 +57,7 @@
         .star-group { margin-bottom: 1.2rem; }
         .star-label { font-size: 0.82rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; }
         .stars { display: flex; gap: 6px; }
-        .star { font-size: 1.6rem; cursor: pointer; transition: transform 0.1s, color 0.1s; color: var(--star-empty); user-select: none; }
+        .star { flex: 1 1 0; min-width: 40px; min-height: 44px; padding: 0; border: 0; background: transparent; font-size: 1.6rem; cursor: pointer; transition: transform 0.1s, color 0.1s; color: var(--star-empty); user-select: none; }
         .star:hover, .star.active { color: var(--star-color); transform: scale(1.15); }
         .star-value { font-size: 0.8rem; color: #f59e0b; font-weight: 700; min-width: 24px; text-align: right; }
 
@@ -82,16 +83,27 @@
         .loading { text-align: center; padding: 2rem; color: #64748b; }
 
         @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } #subjectInfoCard .info-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 700px) {
+            .page-wrapper { padding: 1.25rem 1rem 3rem; }
+            .page-header { align-items: center; margin-bottom: 1.5rem; }
+            .menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+            .nav-links { display: none; flex-basis: 100%; flex-wrap: wrap; gap: 0.5rem; }
+            .nav-links.is-open { display: flex; }
+            .nav-links a { min-height: 44px; display: inline-flex; align-items: center; }
+            .form-card { padding: 1.25rem; }
+            #toast { left: 1rem; right: 1rem; bottom: 1rem; max-width: none; }
+        }
     </style>
 </head>
 <body>
 <div class="page-wrapper">
     <header class="page-header">
-        <a href="{{ url_for('main.hub') }}" class="brand-link">
+        <a href="{{ url_for('main.index') }}" class="brand-link">
             <img src="{{ url_for('static', filename='img/logo.png') }}" alt="AcadFusion AI">
             <span class="brand-name">AcadFusion AI</span>
         </a>
-        <nav class="nav-links">
+        <button type="button" class="menu-toggle" aria-expanded="false" aria-controls="feedback-nav" aria-label="Open navigation menu">☰</button>
+        <nav class="nav-links" id="feedback-nav">
             <a href="{{ url_for('feedback.index') }}" class="active">Feedback Form</a>
             <a href="{{ url_for('feedback.admin_dashboard') }}">Admin Analytics</a>
             <a href="{{ url_for('main.hub') }}">Hub</a>
@@ -136,7 +148,7 @@
                 <div class="form-group" style="justify-content: flex-end; padding-bottom: 0.2rem;">
                     <label>Anonymous Feedback</label>
                     <div class="toggle-group" style="margin-top: 0.6rem;">
-                        <button type="button" class="toggle on" id="anonToggle" onclick="toggleAnon()"></button>
+                        <button type="button" class="toggle on" id="anonToggle" aria-label="Anonymous feedback" aria-pressed="true" onclick="toggleAnon()"></button>
                         <span class="toggle-label" id="anonLabel">Your USN will be hidden</span>
                     </div>
                 </div>
@@ -214,8 +226,8 @@ function buildStarRatings() {
                     <span>${label}</span>
                     <span class="star-value" id="val_${key}">—</span>
                 </div>
-                <div class="stars" id="stars_${key}">
-                    ${[1,2,3,4,5].map(n => `<span class="star" onclick="setRating('${key}',${n})" onmouseover="hoverStars('${key}',${n})" onmouseout="resetHover('${key}')">★</span>`).join('')}
+                <div class="stars" id="stars_${key}" role="group" aria-label="${label}">
+                    ${[1,2,3,4,5].map(n => `<button type="button" class="star" aria-label="${n} out of 5 stars" aria-pressed="false" onclick="setRating('${key}',${n})" onmouseover="hoverStars('${key}',${n})" onmouseout="resetHover('${key}')">★</button>`).join('')}
                 </div>
             </div>`;
     });
@@ -224,7 +236,10 @@ function buildStarRatings() {
 function setRating(key, val) {
     selectedRatings[key] = val;
     const stars = document.querySelectorAll(`#stars_${key} .star`);
-    stars.forEach((s, i) => s.classList.toggle('active', i < val));
+    stars.forEach((s, i) => {
+        s.classList.toggle('active', i < val);
+        s.setAttribute('aria-pressed', String(i < val));
+    });
     document.getElementById(`val_${key}`).textContent = `${val} / 5`;
 }
 
@@ -257,6 +272,7 @@ function toggleAnon() {
     const t = document.getElementById('anonToggle');
     const l = document.getElementById('anonLabel');
     t.classList.toggle('on', isAnonymous);
+    t.setAttribute('aria-pressed', String(isAnonymous));
     l.textContent = isAnonymous ? 'Your USN will be hidden' : 'Your USN will be recorded';
     document.getElementById('studentUsn').disabled = isAnonymous;
 }
@@ -321,6 +337,23 @@ async function submitFeedback(e) {
 }
 
 loadFormData();
+</script>
+<script>
+    const menuButton = document.querySelector('.menu-toggle');
+    const navigation = document.getElementById('feedback-nav');
+    menuButton.addEventListener('click', () => {
+        const isOpen = menuButton.getAttribute('aria-expanded') === 'true';
+        menuButton.setAttribute('aria-expanded', String(!isOpen));
+        menuButton.setAttribute('aria-label', isOpen ? 'Open navigation menu' : 'Close navigation menu');
+        navigation.classList.toggle('is-open', !isOpen);
+    });
+    navigation.addEventListener('click', event => {
+        if (event.target.closest('a')) {
+            menuButton.setAttribute('aria-expanded', 'false');
+            menuButton.setAttribute('aria-label', 'Open navigation menu');
+            navigation.classList.remove('is-open');
+        }
+    });
 </script>
 </body>
 </html>

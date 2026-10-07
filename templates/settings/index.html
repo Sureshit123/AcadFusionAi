@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Institution Configuration | AcadFusion AI</title>
+    <meta name="description" content="Configure institution details, departments, faculty, subjects, and report defaults for AcadFusion AI.">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -27,7 +28,10 @@
         }
 
         .settings-menu-item {
+            width: 100%;
             padding: 0.85rem 1.25rem;
+            border: 0;
+            background: transparent;
             border-radius: 10px;
             color: var(--text-secondary);
             cursor: pointer;
@@ -36,6 +40,7 @@
             display: flex;
             align-items: center;
             gap: 0.75rem;
+            text-align: left;
         }
 
         .settings-menu-item:hover, .settings-menu-item.active {
@@ -190,6 +195,30 @@
             background: var(--accent-secondary);
             color: white;
         }
+
+        @media (max-width: 700px) {
+            .settings-grid {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 1rem;
+            }
+
+            .settings-sidebar,
+            .settings-content,
+            .settings-panel,
+            .input-group {
+                min-width: 0;
+            }
+
+            .settings-panel {
+                padding: 1rem;
+            }
+
+            .form-grid-2,
+            .form-grid-3 {
+                grid-template-columns: minmax(0, 1fr);
+                gap: 1rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -213,11 +242,11 @@
 
         <div class="settings-grid">
             <div class="settings-sidebar">
-                <div class="settings-menu-item active" onclick="switchPanel(0, 'profile')">🏫 Institution Details</div>
-                <div class="settings-menu-item" onclick="switchPanel(1, 'departments')">🏢 Departments</div>
-                <div class="settings-menu-item" onclick="switchPanel(2, 'faculty')">👨‍🏫 Faculty Master</div>
-                <div class="settings-menu-item" onclick="switchPanel(3, 'subjects')">📖 Subject Master</div>
-                <div class="settings-menu-item" onclick="switchPanel(4, 'defaults')">⚙️ Report Defaults</div>
+                <button type="button" class="settings-menu-item active" aria-pressed="true" aria-controls="panel-profile" onclick="switchPanel(0, 'profile')">🏫 Institution Details</button>
+                <button type="button" class="settings-menu-item" aria-pressed="false" aria-controls="panel-departments" onclick="switchPanel(1, 'departments')">🏢 Departments</button>
+                <button type="button" class="settings-menu-item" aria-pressed="false" aria-controls="panel-faculty" onclick="switchPanel(2, 'faculty')">👨‍🏫 Faculty Master</button>
+                <button type="button" class="settings-menu-item" aria-pressed="false" aria-controls="panel-subjects" onclick="switchPanel(3, 'subjects')">📖 Subject Master</button>
+                <button type="button" class="settings-menu-item" aria-pressed="false" aria-controls="panel-defaults" onclick="switchPanel(4, 'defaults')">⚙️ Report Defaults</button>
             </div>
 
             <div class="settings-content">
@@ -634,6 +663,7 @@
             activeTabName = name;
             document.querySelectorAll('.settings-menu-item').forEach((item, i) => {
                 item.classList.toggle('active', i === index);
+                item.setAttribute('aria-pressed', String(i === index));
             });
             document.querySelectorAll('.settings-panel').forEach((panel, i) => {
                 panel.classList.toggle('active', i === index);

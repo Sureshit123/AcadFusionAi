@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard | AcadFusion AI</title>
+    <meta name="description" content="Manage AcadFusion AI users, monitor analysis activity, and review administrative reports.">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo.png') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -109,9 +110,9 @@
         <!-- Tab 1: User Management -->
         <div id="tab-users" class="admin-tab-content">
             <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; justify-content: space-between; align-items: center;">
-                <div style="display: flex; gap: 0.75rem; flex: 1; min-width: 280px;">
-                    <input type="text" id="userSearchInput" placeholder="🔍 Search users by name or email..." onkeyup="filterUsers()" style="padding: 0.6rem 1rem; font-size: 0.88rem; border-radius: 8px;">
-                    <select id="userStatusFilter" onchange="filterUsers()" style="padding: 0.6rem 1rem; font-size: 0.88rem; border-radius: 8px; max-width: 180px;">
+                <div class="user-filter-controls" style="display: flex; gap: 0.75rem; flex: 1;">
+                    <input type="text" id="userSearchInput" aria-label="Search users by name or email" placeholder="🔍 Search users by name or email..." onkeyup="filterUsers()" style="padding: 0.6rem 1rem; font-size: 0.88rem; border-radius: 8px;">
+                    <select id="userStatusFilter" aria-label="Filter users by status" onchange="filterUsers()" style="padding: 0.6rem 1rem; font-size: 0.88rem; border-radius: 8px; max-width: 180px;">
                         <option value="all">All Statuses</option>
                         <option value="active">Active Only</option>
                         <option value="suspended">Suspended Only</option>
@@ -248,7 +249,7 @@
 
     <footer class="developer-credit">
         <div class="shine-text" style="font-size: 0.85rem;">
-            &copy; 2026 AcadFusion AI Administrative Suite | Platform Creator: Sureshit Sharma
+            &copy; {{ current_year }} AcadFusion AI Administrative Suite | Platform Creator: Sureshit Sharma
         </div>
     </footer>
 
